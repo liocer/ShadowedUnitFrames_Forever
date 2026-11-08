@@ -1,31 +1,33 @@
+--[[
+	Totem bar (shamans). Originally by Shadowed; SUF Forever keeps only the shaman bar (the
+	druid / monk / mage / warlock / death knight variants were retail spec features).
+
+	Secret safe: when C_Secrets.ShouldTotemSlotBeSecret says a slot's info is secret,
+	GetTotemInfo's values can't be tested. The bar then runs off the game's duration object
+	(GetTotemDuration + StatusBar:SetTimerDuration counting down on its own), and is shown or
+	faded with SetAlphaFromBoolean on the secret "have totem" flag. Readable slots keep SUF's
+	original OnUpdate timer, which the [totem:timer] tag reads (block.endTime).
+]]
+
 local Totems = {}
 local totemColors = {}
-local MAX_TOTEMS = MAX_TOTEMS
+local MAX_TOTEMS = MAX_TOTEMS or 4
+local Secrets = ShadowUF.Secrets
+local issecretvalue = Secrets.IsSecret
 
-local playerClass = select(2, UnitClass("player"))
-if( playerClass == "DEATHKNIGHT" ) then
-	MAX_TOTEMS = 1
-	-- Unholy DKs get rank 2 on level 29 which converts their ghoul into a proper pet.
-	local spec = (UnitLevel("player") < 29) and {1, 2, 3} or {1, 2}
-	ShadowUF:RegisterModule(Totems, "totemBar", ShadowUF.L["Ghoul bar"], true, "DEATHKNIGHT", spec, 12)
-elseif( playerClass == "DRUID" ) then
-	MAX_TOTEMS = 1
-	ShadowUF:RegisterModule(Totems, "totemBar", ShadowUF.L["Mushroom bar"], true, "DRUID", 4, 39)
-elseif( playerClass == "MONK" ) then
-	MAX_TOTEMS = 1
-	ShadowUF:RegisterModule(Totems, "totemBar", ShadowUF.L["Statue bar"], true, "MONK", {1, 2}, 35)
-elseif( playerClass == "MAGE" ) then
-	MAX_TOTEMS = 1
-	ShadowUF:RegisterModule(Totems, "totemBar", ShadowUF.L["Rune of Power bar"], true, "MAGE", {1, 2, 3}, 30)
-elseif( playerClass == "WARLOCK" ) then
-	MAX_TOTEMS = 2
-	ShadowUF:RegisterModule(Totems, "totemBar", ShadowUF.L["Imp & Dreadstalker bar"], true, "WARLOCK", 2)
-else
-	ShadowUF:RegisterModule(Totems, "totemBar", ShadowUF.L["Totem bar"], true, "SHAMAN")
-end
+ShadowUF:RegisterModule(Totems, "totemBar", ShadowUF.L["Totem bar"], true, "SHAMAN")
 
 ShadowUF.BlockTimers:Inject(Totems, "TOTEM_TIMER")
 ShadowUF.DynamicBlocks:Inject(Totems)
+
+local function slotIsSecret(slot)
+	if( C_Secrets and C_Secrets.ShouldTotemSlotBeSecret ) then
+		local ok, secret = pcall(C_Secrets.ShouldTotemSlotBeSecret, slot)
+		if( ok and not issecretvalue(secret) ) then return secret and true or false end
+		if( ok ) then return true end
+	end
+	return false
+end
 
 function Totems:SecureLockable()
 	return MAX_TOTEMS > 1
@@ -37,13 +39,13 @@ function Totems:OnEnable(frame)
 		frame.totemBar.totems = {}
 		frame.totemBar.blocks = frame.totemBar.totems
 
-		local priorities = (playerClass == "SHAMAN") and SHAMAN_TOTEM_PRIORITIES or STANDARD_TOTEM_PRIORITIES
+		local priorities = SHAMAN_TOTEM_PRIORITIES or {1, 2, 3, 4}
 
 		for id=1, MAX_TOTEMS do
 			local totem = ShadowUF.Units:CreateBar(frame.totemBar)
 			totem:SetMinMaxValues(0, 1)
 			totem:SetValue(0)
-			totem.id = MAX_TOTEMS == 1 and 1 or priorities[id]
+			totem.id = priorities[id] or id
 			totem.parent = frame
 
 			if( id > 1 ) then
@@ -55,23 +57,11 @@ function Totems:OnEnable(frame)
 			table.insert(frame.totemBar.totems, totem)
 		end
 
-		if( playerClass == "DEATHKNIGHT" ) then
-			totemColors[1] = ShadowUF.db.profile.classColors.PET
-		elseif( playerClass == "DRUID" ) then
-			totemColors[1] = ShadowUF.db.profile.powerColors.MUSHROOMS
-		elseif( playerClass == "WARLOCK" ) then
-			totemColors[1] = ShadowUF.db.profile.classColors.PET
-			totemColors[2] = ShadowUF.db.profile.classColors.PET
-		elseif( playerClass == "MONK" ) then
-			totemColors[1] = ShadowUF.db.profile.powerColors.STATUE
-		elseif( playerClass == "MAGE" ) then
-			totemColors[1] = ShadowUF.db.profile.powerColors.RUNEOFPOWER
-		else
-			totemColors[1] = {r = 1, g = 0, b = 0.4}
-			totemColors[2] = {r = 0, g = 1, b = 0.4}
-			totemColors[3] = {r = 0, g = 0.4, b = 1}
-			totemColors[4] = {r = 0.90, g = 0.90, b = 0.90}
-		end
+		-- Fire, earth, water, air
+		totemColors[1] = {r = 1, g = 0, b = 0.4}
+		totemColors[2] = {r = 0, g = 1, b = 0.4}
+		totemColors[3] = {r = 0, g = 0.4, b = 1}
+		totemColors[4] = {r = 0.90, g = 0.90, b = 0.90}
 	end
 
 	frame:RegisterNormalEvent("PLAYER_TOTEM_UPDATE", self, "Update")
@@ -84,8 +74,8 @@ function Totems:OnDisable(frame)
 	frame:UnregisterUpdateFunc(self, "Update")
 
 	for _, totem in pairs(frame.totemBar.totems) do
-	    totem:Hide()
-    end
+		totem:Hide()
+	end
 end
 
 function Totems:OnLayoutApplied(frame)
@@ -97,8 +87,8 @@ function Totems:OnLayoutApplied(frame)
 	for _, totem in pairs(frame.totemBar.totems) do
 		totem:SetHeight(frame.totemBar:GetHeight())
 		totem:SetWidth(barWidth)
-		totem:SetOrientation(ShadowUF.db.profile.units[frame.unitType].totemBar.vertical and "VERTICAL" or "HORIZONTAL")
-		totem:SetReverseFill(ShadowUF.db.profile.units[frame.unitType].totemBar.reverse and true or false)
+		totem:SetOrientation(config.vertical and "VERTICAL" or "HORIZONTAL")
+		totem:SetReverseFill(config.reverse and true or false)
 		totem:SetStatusBarTexture(ShadowUF.Layout.mediaPath.statusbar)
 		totem:GetStatusBarTexture():SetHorizTile(false)
 
@@ -110,8 +100,9 @@ function Totems:OnLayoutApplied(frame)
 			totem.background:Hide()
 		end
 
-		if( not ShadowUF.db.profile.units[frame.unitType].totemBar.icon ) then
-			frame:SetBlockColor(totem, "totemBar", totemColors[totem.id].r, totemColors[totem.id].g, totemColors[totem.id].b)
+		if( not config.icon ) then
+			local color = totemColors[totem.id] or totemColors[1]
+			frame:SetBlockColor(totem, "totemBar", color.r, color.g, color.b)
 		end
 
 		if( config.secure ) then
@@ -138,10 +129,6 @@ local function totemMonitor(self, elapsed)
 		self:SetValue(0)
 		self:SetScript("OnUpdate", nil)
 		self.endTime = nil
-
-		if( not self.parent.inVehicle and MAX_TOTEMS == 1 ) then
-			ShadowUF.Layout:SetBarVisibility(self.parent, "totemBar", false)
-		end
 	end
 
 	if( self.fontString ) then
@@ -155,45 +142,69 @@ function Totems:UpdateVisibility(frame)
 
 		if( frame.inVehicle ) then
 			ShadowUF.Layout:SetBarVisibility(frame, "totemBar", false)
-		elseif( MAX_TOTEMS ~= 1 ) then
+		else
 			self:Update(frame)
 		end
 	end
 end
 
+-- A slot whose info is secret: the game's duration object drives the bar
+local function updateSecretTotem(indicator, config)
+	indicator:SetScript("OnUpdate", nil)
+	indicator.endTime = nil
+	indicator.have = true
+
+	local haveTotem, _, _, _, icon = GetTotemInfo(indicator.id)
+	local ok = GetTotemDuration and pcall(function()
+		indicator:SetTimerDuration(GetTotemDuration(indicator.id), Enum.StatusBarInterpolation.Immediate, Enum.StatusBarTimerDirection.RemainingTime)
+	end)
+	if( not ok ) then
+		indicator:SetMinMaxValues(0, 1)
+		indicator:SetValue(0)
+	end
+
+	if( config.icon ) then
+		pcall(indicator.SetStatusBarTexture, indicator, icon)
+	end
+
+	-- Faded out when the slot's empty, without testing the secret flag
+	if( not pcall(indicator.SetAlphaFromBoolean, indicator, haveTotem, 1, 0) ) then
+		indicator:SetAlpha(1)
+	end
+end
+
 function Totems:Update(frame)
+	local config = ShadowUF.db.profile.units[frame.unitType].totemBar
 	local totalActive = 0
 	for _, indicator in pairs(frame.totemBar.totems) do
-		local have, _name, start, duration, icon
-		if MAX_TOTEMS == 1 and indicator.id == 1 then
-			local id = 1
-			while not have and id <= 4 do
-				have, _name, start, duration, icon = GetTotemInfo(id)
-				id = id + 1
-			end
-		else
-			have, _name, start, duration, icon = GetTotemInfo(indicator.id)
-		end
-		if( have and start > 0 ) then
-			if( ShadowUF.db.profile.units[frame.unitType].totemBar.icon ) then
-				indicator:SetStatusBarTexture(icon)
-			end
-
-			indicator.have = true
-			indicator.endTime = start + duration
-			indicator:SetMinMaxValues(0, duration)
-			indicator:SetValue(indicator.endTime - GetTime())
-			indicator:SetScript("OnUpdate", totemMonitor)
-			indicator:SetAlpha(1.0)
-
+		if( slotIsSecret(indicator.id) ) then
+			updateSecretTotem(indicator, config)
+			-- Can't tell, so count it as up and keep the bar shown
 			totalActive = totalActive + 1
+		else
+			local have, _name, start, duration, icon = GetTotemInfo(indicator.id)
+			if( have and start > 0 ) then
+				if( config.icon ) then
+					indicator:SetStatusBarTexture(icon)
+				end
 
-		elseif( indicator.have ) then
-			indicator.have = nil
-			indicator:SetScript("OnUpdate", nil)
-			indicator:SetMinMaxValues(0, 1)
-			indicator:SetValue(0)
-			indicator.endTime = nil
+				indicator.have = true
+				indicator.endTime = start + duration
+				indicator:SetMinMaxValues(0, duration)
+				indicator:SetValue(indicator.endTime - GetTime())
+				indicator:SetScript("OnUpdate", totemMonitor)
+				indicator:SetAlpha(1.0)
+
+				totalActive = totalActive + 1
+
+			elseif( indicator.have ) then
+				indicator.have = nil
+				indicator:SetScript("OnUpdate", nil)
+				indicator:SetMinMaxValues(0, 1)
+				indicator:SetValue(0)
+				indicator:SetAlpha(1.0)
+				indicator.endTime = nil
+			end
 		end
 
 		if( indicator.fontString ) then
@@ -202,8 +213,7 @@ function Totems:Update(frame)
 	end
 
 	if( not frame.inVehicle ) then
-		-- Guardian timers always auto hide or if it's flagged to not always be shown
-		if( MAX_TOTEMS == 1 or not ShadowUF.db.profile.units[frame.unitType].totemBar.showAlways ) then
+		if( not config.showAlways ) then
 			ShadowUF.Layout:SetBarVisibility(frame, "totemBar", totalActive > 0)
 		end
 	end

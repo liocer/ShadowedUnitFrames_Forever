@@ -31,3 +31,18 @@ function DynamicBlocks:Inject(module)
 end
 
 ShadowUF.DynamicBlocks = DynamicBlocks
+
+-- Zone type used for the per-zone visibility settings: "none", "pvp", "arena", "party", "raid" or "neighborhood".
+-- CanHearthAndResurrectFromArea() returns true for world pvp areas (see QueueStatusFrame.lua); it's an old C
+-- function that isn't in the API docs, so it's looked up defensively.
+local CanHearthAndResurrectFromArea = _G["CanHearthAndResurrectFromArea"]
+-- ignoreWorldPvP: only look at the instance type (what module visibility has always used)
+function ShadowUF:GetInstanceType(ignoreWorldPvP)
+	local instanceType = not ignoreWorldPvP and CanHearthAndResurrectFromArea and CanHearthAndResurrectFromArea() and "pvp" or select(2, IsInInstance())
+	if( instanceType == "scenario" ) then instanceType = "party" end
+	if( instanceType == "interior" ) then instanceType = "neighborhood" end
+	-- Anything we don't have visibility settings for counts as the open world
+	if( not instanceType or not ShadowUF.db.profile.visibility[instanceType] and instanceType ~= "none" ) then instanceType = "none" end
+
+	return instanceType
+end

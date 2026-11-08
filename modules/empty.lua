@@ -41,7 +41,7 @@ function Empty:UpdateColor(frame)
 			else
 				color = ShadowUF.db.profile.healthColors.enemyUnattack
 			end
-		elseif( UnitReaction(frame.unit, "player") ) then
+		elseif( ShadowUF.Secrets.Plain(UnitReaction(frame.unit, "player")) ) then
 			local reaction = UnitReaction(frame.unit, "player")
 			if( reaction > 4 ) then
 				color = ShadowUF.db.profile.healthColors.friendly
@@ -51,9 +51,13 @@ function Empty:UpdateColor(frame)
 				color = ShadowUF.db.profile.healthColors.hostile
 			end
 		end
-	elseif( ShadowUF.db.profile.units[frame.unitType].emptyBar.class and ( UnitIsPlayer(frame.unit) or UnitCreatureFamily(frame.unit) ) ) then
-		local class = UnitCreatureFamily(frame.unit) or frame:UnitClassToken()
-		color = class and ShadowUF.db.profile.classColors[class]
+	elseif( ShadowUF.db.profile.units[frame.unitType].emptyBar.class ) then
+		-- Creature family and class may be secret (identity restricted units)
+		local family = ShadowUF.Secrets.Plain(UnitCreatureFamily(frame.unit))
+		if( UnitIsPlayer(frame.unit) or family ) then
+			local class = family or ShadowUF.Secrets.Plain(frame:UnitClassToken())
+			color = class and ShadowUF.db.profile.classColors[class]
+		end
 	end
 
 	color = color or frame.emptyBar.background.overrideColor or fallbackColor

@@ -1,5 +1,26 @@
+--[[
+	Shared code for point displays (combo points), shown as a bar of blocks or as icons.
+	Originally by Shadowed. SUF Forever: the point count may be secret in combat. Then each
+	point's alpha comes from its own step curve evaluated by the game on the points percent
+	(GetPointAlpha in the module, e.g. UnitPowerPercent with a step at that point), so no Lua
+	comparisons happen on the secret count.
+]]
 local Combo = {isComboPoints = true}
 ShadowUF.ComboPoints = Combo
+local Secrets = ShadowUF.Secrets
+local issecretvalue = Secrets.IsSecret
+
+-- Step curves: curve i is 0 below i points out of max and 1 from there on
+local stepCurves = {}
+function Combo.GetStepCurve(id, max)
+	stepCurves[max] = stepCurves[max] or {}
+	local curve = stepCurves[max][id]
+	if( curve == nil ) then
+		curve = Secrets.CreateStepCurve((id - 0.5) / max) or false
+		stepCurves[max][id] = curve
+	end
+	return curve or nil
+end
 
 local function createIcons(config, pointsFrame)
 	local point, relativePoint, x, y
@@ -147,7 +168,8 @@ function Combo:UpdateBarBlocks(frame, event, unit, powerType)
 	if( event and powerType ~= pointsFrame.cpConfig.eventType ) then return end
 
 	local max = self.GetMaxPoints and self:GetMaxPoints() or UnitPowerMax("player", pointsFrame.cpConfig.powerType)
-	if( max == 0 or pointsFrame.visibleBlocks == max ) then return end
+	max = Secrets.Plain(max, pointsFrame.cpConfig.max)
+	if( not max or max == 0 or pointsFrame.visibleBlocks == max ) then return end
 
 	pointsFrame.cpConfig.max = max
 
@@ -177,14 +199,37 @@ function Combo:Update(frame, event, unit, powerType)
 	-- Anything power based will have an eventType to filter on
 	if( event and frame[key].cpConfig.eventType and frame[key].cpConfig.eventType ~= powerType ) then return end
 
+	if( not frame[key].points ) then return end
 	local points = self:GetPoints(unit)
+	local config = ShadowUF.db.profile.units[frame.unitType][key]
+
+	-- Secret count: every point is shown and lit (alpha 1) or not (alpha 0) by its step curve.
+	-- The bar can't be hidden on a secret count, so it stays up.
+	if( issecretvalue(points) ) then
+		if( config.isBar ) then
+			ShadowUF.Layout:SetBarVisibility(frame, key, true)
+		end
+
+		local max = frame[key].cpConfig.max or 5
+		for id, pointTexture in pairs(frame[key].points) do
+			-- GetPointAlpha returns 0 - 1, maybe secret; SetAlpha takes it as is
+			pointTexture:Show()
+			if( not self.GetPointAlpha or not pcall(pointTexture.SetAlpha, pointTexture, self:GetPointAlpha(id, max)) ) then
+				pointTexture:SetAlpha(0)
+			end
+		end
+		return
+	end
+
+	points = points or 0
 
 	-- Bar display, hide it if we don't have any combo points
-	if( ShadowUF.db.profile.units[frame.unitType][key].isBar ) then
-		ShadowUF.Layout:SetBarVisibility(frame, key, ShadowUF.db.profile.units[frame.unitType][key].showAlways or (points and points > 0))
+	if( config.isBar ) then
+		ShadowUF.Layout:SetBarVisibility(frame, key, config.showAlways or points > 0)
 	end
 
 	for id, pointTexture in pairs(frame[key].points) do
+		pointTexture:SetAlpha(1)
 		if( id <= points ) then
 			pointTexture:Show()
 		else

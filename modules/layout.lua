@@ -464,7 +464,9 @@ function Layout:SetupText(frame, config)
 	for id, row in pairs(config.text) do
 		local module = string.sub(row.anchorTo, 2)
 		local parent = row.anchorTo == "$parent" and frame or frame[module]
-		if( parent and ( ShadowUF.modules[module].defaultVisibility == false or parent:IsShown() ) and row.enabled and row.text ~= "" ) then
+		-- Forever: modules can be missing (removed retail bars in an imported profile, or "$parent"), don't index nil
+		local moduleData = ShadowUF.modules[module]
+		if( parent and ( ( moduleData and moduleData.defaultVisibility == false ) or parent:IsShown() ) and row.enabled and row.text ~= "" ) then
 			if( not row.block ) then
 				self:InitFontString(parent, frame, id, row, nil)
 			else

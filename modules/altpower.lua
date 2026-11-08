@@ -1,4 +1,8 @@
+-- Alternate power bar (UnitPowerBarAlt data: encounter / quest bars). The API is all still
+-- here in Forever, so it's kept; values may be secret and go straight into the bar.
 local AltPower = {}
+local Secrets = ShadowUF.Secrets
+local issecretvalue = Secrets.IsSecret
 AltPower.defaultVisibility = false
 ShadowUF:RegisterModule(AltPower, "altPowerBar", ShadowUF.L["Alt. Power bar"], true)
 
@@ -18,8 +22,9 @@ end
 
 local altColor = {}
 function AltPower:UpdateVisibility(frame)
-	local barID = UnitPowerBarID(frame.unit) or 0
-	local barInfo = GetUnitPowerBarInfoByID(barID)
+	local barID = Secrets.Plain(UnitPowerBarID(frame.unit)) or 0
+	local barInfo = barID > 0 and GetUnitPowerBarInfoByID(barID)
+	if( issecretvalue(barInfo) ) then barInfo = nil end
 	local visible = false
 	if( barInfo and barInfo.barType ) then
 		if( ( frame.unitType == "player" or frame.unitType == "pet" ) or not barInfo.hideFromOthers ) then
@@ -46,10 +51,15 @@ end
 
 function AltPower:Update(frame, event, unit, type)
 	if( event and type ~= "ALTERNATE" ) then return end
-	local barID = UnitPowerBarID(frame.unit) or 0
-	local barInfo = GetUnitPowerBarInfoByID(barID)
-	local minPower = barInfo and barInfo.minPower or 0
+	local barID = Secrets.Plain(UnitPowerBarID(frame.unit)) or 0
+	local barInfo = barID > 0 and GetUnitPowerBarInfoByID(barID)
+	local minPower = barInfo and not issecretvalue(barInfo) and Secrets.Plain(barInfo.minPower) or 0
 
-	frame.altPowerBar:SetMinMaxValues(minPower, UnitPowerMax(frame.unit, ALTERNATE_POWER_INDEX) or 0)
-	frame.altPowerBar:SetValue(UnitPower(frame.unit, ALTERNATE_POWER_INDEX) or 0)
+	local maxPower, power = UnitPowerMax(frame.unit, ALTERNATE_POWER_INDEX), UnitPower(frame.unit, ALTERNATE_POWER_INDEX)
+	if( not issecretvalue(maxPower) and not maxPower ) then maxPower = 0 end
+	if( not issecretvalue(power) and not power ) then power = 0 end
+	if( not pcall(frame.altPowerBar.SetMinMaxValues, frame.altPowerBar, minPower, maxPower) or not pcall(frame.altPowerBar.SetValue, frame.altPowerBar, power) ) then
+		frame.altPowerBar:SetMinMaxValues(0, 1)
+		frame.altPowerBar:SetValue(0)
+	end
 end

@@ -1,5 +1,13 @@
+--[[
+	Power bar. Originally by Shadowed; SUF Forever: power and max power may be secret in
+	combat, they go straight into the bar (falling back to the game's percent if the bar
+	refuses them). Power types here: mana, rage, energy, focus (hunter pets) and the odd
+	vehicle / NPC type, coloured from powerColors or the game's own colour for that type.
+]]
+
 local Power = {}
 local powerMap = ShadowUF.Tags.powerMap
+local Secrets = ShadowUF.Secrets
 ShadowUF:RegisterModule(Power, "powerBar", ShadowUF.L["Power bar"], true)
 
 function Power:OnEnable(frame)
@@ -33,12 +41,15 @@ end
 local altColor = {}
 function Power:UpdateColor(frame)
 	local powerID, currentType, altR, altG, altB = UnitPowerType(frame.unit)
+	powerID, currentType = Secrets.Plain(powerID), Secrets.Plain(currentType)
+	altR, altG, altB = Secrets.Plain(altR), Secrets.Plain(altG), Secrets.Plain(altB)
 	frame.powerBar.currentType = currentType
+	frame.powerBar.powerID = powerID
 
-	-- Overridden power types like Warlock pets, or Ulduar vehicles use "POWER_TYPE_#####" but triggers power events with "ENERGY", so this fixes that
+	-- Overridden power types like Warlock pets, or vehicles use "POWER_TYPE_#####" but triggers power events with "ENERGY", so this fixes that
 	-- by using the powerID to figure out the event type
-	if( not powerMap[currentType] ) then
-		frame.powerBar.currentType = powerMap[powerID] or "ENERGY"
+	if( not currentType or not powerMap[currentType] ) then
+		frame.powerBar.currentType = powerID and powerMap[powerID] or "ENERGY"
 	end
 
 	if( ShadowUF.db.profile.units[frame.unitType].powerBar.onlyMana ) then
@@ -46,12 +57,11 @@ function Power:UpdateColor(frame)
 		if( currentType ~= "MANA" ) then return end
 	end
 
-
 	local color
 	if( frame.powerBar.minusMob ) then
 		color = ShadowUF.db.profile.healthColors.offline
 	elseif( ShadowUF.db.profile.units[frame.unitType].powerBar.colorType == "class" and UnitIsPlayer(frame.unit) ) then
-		local class = frame:UnitClassToken()
+		local class = Secrets.Plain(frame:UnitClassToken())
 		color = class and ShadowUF.db.profile.classColors[class]
 	end
 
@@ -70,10 +80,15 @@ function Power:UpdateColor(frame)
 	frame:SetBarColor("powerBar", color.r, color.g, color.b)
 
 	self:Update(frame)
+
+	-- The cost preview takes its colour and scale from the bar
+	if( frame.visibility.powerPrediction and ShadowUF.modules.powerPrediction ) then
+		ShadowUF.modules.powerPrediction:Update(frame)
+	end
 end
 
 function Power:UpdateClassification(frame, event, unit)
-	local classif = UnitClassification(frame.unit)
+	local classif = Secrets.Plain(UnitClassification(frame.unit))
 	local minus = nil
 	if( classif == "minus" ) then
 		minus = true
@@ -96,7 +111,13 @@ function Power:Update(frame, event, unit, powerType)
 	if( event and powerType and powerType ~= frame.powerBar.currentType ) then return end
 	if( frame.powerBar.minusMob ) then return end
 
-	frame.powerBar.currentPower = UnitPower(frame.unit)
-	frame.powerBar:SetMinMaxValues(0, UnitPowerMax(frame.unit))
-	frame.powerBar:SetValue(UnitIsDeadOrGhost(frame.unit) and 0 or not UnitIsConnected(frame.unit) and 0 or frame.powerBar.currentPower)
+	local unitID = frame.unit
+	local current, maxPower = UnitPower(unitID), UnitPowerMax(unitID)
+	frame.powerBar.currentPower = current
+
+	local empty = UnitIsDeadOrGhost(unitID) or not UnitIsConnected(unitID)
+	frame.powerBar.exactValues = Secrets.SetBar(frame.powerBar, empty and 0 or current, maxPower, function()
+		if( empty ) then return 0 end
+		return Secrets.PowerPercent(unitID, frame.powerBar.powerID)
+	end)
 end

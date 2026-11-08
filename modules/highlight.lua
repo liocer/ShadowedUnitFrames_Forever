@@ -2,7 +2,7 @@ local Highlight = {}
 local goldColor, mouseColor = {r = 0.75, g = 0.75, b = 0.35}, {r = 0.75, g = 0.75, b = 0.50}
 local rareColor, eliteColor = {r = 0, g = 0.63, b = 1}, {r = 1, g = 0.81, b = 0}
 
-local canCure = ShadowUF.Units.canCure
+local issecretvalue = issecretvalue or function() return false end
 ShadowUF:RegisterModule(Highlight, "highlight", ShadowUF.L["Highlight"])
 
 -- Might seem odd to hook my code in the core manually, but HookScript is ~40% slower due to it being a secure hook
@@ -134,7 +134,8 @@ end
 function Highlight:Update(frame)
 	local color
 	if( frame.highlight.hasDebuff ) then
-		color = DebuffTypeColor[frame.highlight.hasDebuff] or DebuffTypeColor[""]
+		-- r, g, b may be secret (dispel type colour from the game), SetVertexColor accepts that
+		color = frame.highlight.debuffColor
 	elseif( frame.highlight.hasThreat ) then
 		color = ShadowUF.db.profile.healthColors.hostile
 	elseif( frame.highlight.hasAttention ) then
@@ -158,35 +159,74 @@ function Highlight:Update(frame)
 	end
 end
 
+-- UnitThreatSituation can be secret (threat state restricted); then we can't tell and show nothing
 function Highlight:UpdateThreat(frame)
-	frame.highlight.hasThreat = UnitThreatSituation(frame.unit) == 3 or nil
+	local status = UnitThreatSituation(frame.unit)
+	if( issecretvalue(status) ) then
+		frame.highlight.hasThreat = nil
+	else
+		frame.highlight.hasThreat = status == 3 or nil
+	end
 	self:Update(frame)
 end
 
+local function isUnit(unit, other)
+	local ok, result = pcall(UnitIsUnit, unit, other)
+	return ok and not issecretvalue(result) and result or nil
+end
+
 function Highlight:UpdateAttention(frame)
-	frame.highlight.hasAttention = UnitIsUnit(frame.unit, "target") or UnitIsUnit(frame.unit, "focus") or nil
+	frame.highlight.hasAttention = isUnit(frame.unit, "target") or isUnit(frame.unit, "focus") or nil
 	self:Update(frame)
 end
 
 function Highlight:UpdateClassification(frame)
-	frame.highlight.hasClassification = UnitClassification(frame.unit)
+	local classification = UnitClassification(frame.unit)
+	frame.highlight.hasClassification = not issecretvalue(classification) and classification or nil
 	self:Update(frame)
+end
+
+-- Dispellable debuff: "HARMFUL|RAID" only returns debuffs the player can dispel, and works
+-- in combat. The colour comes from the dispel type, through a colour curve when it's secret.
+local debuffColor = {r = 0, g = 0, b = 0}
+local function fallbackScan(frame)
+	local id = 0
+	while( true ) do
+		id = id + 1
+		local auraData = C_UnitAuras.GetDebuffDataByIndex(frame.unit, id)
+		if( issecretvalue(auraData) or not auraData ) then break end
+		local auraType = auraData.dispelName
+		if( not issecretvalue(auraType) and auraType and ShadowUF.Units:CanCure(auraType) ) then
+			return auraData
+		end
+	end
 end
 
 function Highlight:UpdateAura(frame)
 	frame.highlight.hasDebuff = nil
 	if( UnitIsFriend(frame.unit, "player") ) then
-		local id = 0
-		while( true ) do
-			id = id + 1
-			local name, _, _, auraType = AuraUtil.UnpackAuraData(C_UnitAuras.GetDebuffDataByIndex(frame.unit, id))
-			if( not name ) then break end
-			if( auraType == "" ) then auraType = "Enrage" end
-
-			if( canCure[auraType] ) then
-				frame.highlight.hasDebuff = auraType
-				break
+		local auraData
+		if( C_UnitAuras.GetUnitAuraInstanceIDs ) then
+			local ok, ids = pcall(C_UnitAuras.GetUnitAuraInstanceIDs, frame.unit, "HARMFUL|RAID", 1)
+			local auraInstanceID = ok and type(ids) == "table" and ids[1]
+			if( auraInstanceID and not issecretvalue(auraInstanceID) ) then
+				auraData = C_UnitAuras.GetAuraDataByAuraInstanceID(frame.unit, auraInstanceID)
+			elseif( not ok ) then
+				auraData = fallbackScan(frame)
 			end
+		else
+			auraData = fallbackScan(frame)
+		end
+
+		if( auraData ) then
+			local color = frame.highlight.debuffColor or {}
+			frame.highlight.debuffColor = color
+			if( ShadowUF.Auras ) then
+				color.r, color.g, color.b = ShadowUF.Auras:GetDispelColor(frame.unit, auraData)
+			else
+				color.r, color.g, color.b = debuffColor.r, debuffColor.g, debuffColor.b
+			end
+			frame.highlight.hasDebuff = true
 		end
 	end
 

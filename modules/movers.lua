@@ -16,6 +16,21 @@ local function getValue(func, unit, value)
 	return unitConfig[func .. unit]
 end
 
+-- A made up aura in C_UnitAuras.GetAuraDataByIndex format for config mode
+local function testAura(unit, id, filter)
+	if( type(id) ~= "number" or id > 40 ) then return end
+
+	local helpful = not filter or string.match(filter, "HELPFUL") and true or false
+	local texture = helpful and "Interface\\Icons\\Spell_Nature_Rejuvenation" or "Interface\\Icons\\Ability_DualWield"
+	local mod = id % 5
+	local auraType = mod == 0 and "Magic" or mod == 1 and "Curse" or mod == 2 and "Poison" or mod == 3 and "Disease" or nil
+	return {
+		name = L["Test Aura"], icon = texture, applications = id, dispelName = auraType, duration = 0, expirationTime = 0,
+		sourceUnit = "player", isStealable = id % 6 == 0, spellId = 1, auraInstanceID = id, isHelpful = helpful, isHarmful = not helpful,
+		isFromPlayerOrPlayerPet = true, canApplyAura = true, isBossAura = false, nameplateShowPersonal = false, timeMod = 1, charges = 0, maxCharges = 0,
+	}
+end
+
 local function createConfigEnv()
 	if( configEnv ) then return end
 	configEnv = setmetatable({
@@ -29,7 +44,7 @@ local function createConfigEnv()
 		UnitIsConnected = function(unit) return true end,
 		UnitLevel = function(unit) return GetMaxLevelForPlayerExpansion() end,
 		UnitIsPlayer = function(unit) return unit ~= "boss" and unit ~= "pet" and not string.match(unit, "(%w+)pet") end,
-		UnitHealth = function(unit) return getValue("UnitHealth", unit, math.random(20000, 50000)) end,
+		UnitHealth = function(unit) return getValue("UnitHealth", unit, math.random(2000, 5000)) end,
 		UnitIsQuestBoss = function(unit) return unit == "target" or unit == "focus" end,
 		UnitIsWildBattlePet = function(unit) return unit == "target" or unit == "focus" end,
 		UnitBattlePetType = function(unit)
@@ -37,45 +52,33 @@ local function createConfigEnv()
 				return getValue("UnitBattlePetType", unit, math.random(#(PET_TYPE_SUFFIX)))
 			end
 		end,
-		GetArenaOpponentSpec = function(unitID)
-			return getValue("GetArenaOpponentSpec", unitID, math.random(250, 270))
-		end,
-		UnitHealthMax = function(unit) return 50000 end,
+		UnitHealthMax = function(unit) return 5000 end,
 		UnitPower = function(unit, powerType)
-			if( powerType == Enum.PowerType.HolyPower or powerType == Enum.PowerType.SoulShards or powerType == Enum.PowerType.Essence ) then
+			if( powerType == Enum.PowerType.ComboPoints ) then
 				return 3
-			elseif( powerType == Enum.PowerType.Chi) then
-				return 4
 			end
 
-			return getValue("UnitPower", unit, math.random(20000, 50000))
+			return getValue("UnitPower", unit, math.random(2000, 5000))
 		end,
 		UnitGetTotalHealAbsorbs = function(unit)
-			return getValue("UnitGetTotalHealAbsorbs", unit, math.random(5000, 10000))
+			return getValue("UnitGetTotalHealAbsorbs", unit, math.random(250, 500))
 		end,
 		UnitGetIncomingHeals = function(unit)
-			return getValue("UnitGetIncomingHeals", unit, math.random(10000, 15000))
+			return getValue("UnitGetIncomingHeals", unit, math.random(500, 1000))
 		end,
 		UnitGetTotalAbsorbs = function(unit)
-			return getValue("UnitGetTotalAbsorbs", unit, math.random(2500, 5000))
+			return getValue("UnitGetTotalAbsorbs", unit, math.random(250, 500))
 		end,
 		UnitPowerMax = function(unit, powerType)
-			if( powerType == Enum.PowerType.Rage or powerType == Enum.PowerType.Energy or powerType == Enum.PowerType.RunicPower
-			 or powerType == Enum.PowerType.LunarPower or powerType == Enum.PowerType.Maelstrom or powerType == Enum.PowerType.Insanity
-			 or powerType == Enum.PowerType.Fury or powerType == Enum.PowerType.Pain ) then
+			if( powerType == Enum.PowerType.Rage or powerType == Enum.PowerType.Energy ) then
 				return 100
 			elseif( powerType == Enum.PowerType.Focus ) then
-				return 120
-			elseif( powerType == Enum.PowerType.ComboPoints or powerType == Enum.PowerType.SoulShards or powerType == Enum.PowerType.HolyPower
-			     or powerType == Enum.PowerType.Chi or powerType == Enum.PowerType.Essence ) then
+				return 100
+			elseif( powerType == Enum.PowerType.ComboPoints ) then
 				return 5
-			elseif( powerType == Enum.PowerType.Runes ) then
-				return 6
-			elseif( powerType == Enum.PowerType.ArcaneCharges ) then
-				return 4
 			end
 
-			return 50000
+			return 5000
 		end,
 		UnitHasIncomingResurrection = function(unit) return true end,
 		UnitInOtherParty = function(unit) return getValue("UnitInOtherParty", unit, math.random(0, 1) == 1) end,
@@ -121,23 +124,22 @@ local function createConfigEnv()
 			return role == 1 and "TANK" or (role == 2 and "HEALER" or (role == 3 and "DAMAGER"))
 		end,
 		UnitPowerType = function(unit)
-			local powerType = math.random(0, 4)
-			powerType = getValue("UnitPowerType", unit, powerType == 4 and 6 or powerType)
-
-			return powerType, powerType == 0 and "MANA" or powerType == 1 and "RAGE" or powerType == 2 and "FOCUS" or powerType == 3 and "ENERGY" or powerType == 6 and "RUNIC_POWER"
-		end,
-		UnitStagger = function(unit)
-			if( unit ~= "player" ) then return nil end
-			return getValue("UnitStagger", math.random(2000, 10000))
+			-- Mana, rage, focus (hunter pets) or energy
+			local powerType = getValue("UnitPowerType", unit, math.random(0, 3))
+			return powerType, powerType == 0 and "MANA" or powerType == 1 and "RAGE" or powerType == 2 and "FOCUS" or powerType == 3 and "ENERGY"
 		end,
 		UnitAura = function(unit, id, filter)
-			if( type(id) ~= "number" or id > 40 ) then return end
-
-			local texture = filter == "HELPFUL" and "Interface\\Icons\\Spell_Nature_Rejuvenation" or "Interface\\Icons\\Ability_DualWield"
-			local mod = id % 5
-			local auraType = mod == 0 and "Magic" or mod == 1 and "Curse" or mod == 2 and "Poison" or mod == 3 and "Disease" or "none"
-			return L["Test Aura"], texture, id, auraType, 0, 0, "player", id % 6 == 0
+			local aura = testAura(unit, id, filter)
+			if( aura ) then
+				return aura.name, aura.icon, aura.applications, aura.dispelName, aura.duration, aura.expirationTime, aura.sourceUnit, aura.isStealable
+			end
 		end,
+		-- Fake auras for the C_UnitAuras functions the aura modules use; everything else is the real C_UnitAuras
+		C_UnitAuras = setmetatable({
+			GetAuraDataByIndex = function(unit, index, filter) return testAura(unit, index, filter) end,
+			GetBuffDataByIndex = function(unit, index, filter) return testAura(unit, index, "HELPFUL" .. (filter and ("|" .. filter) or "")) end,
+			GetDebuffDataByIndex = function(unit, index, filter) return testAura(unit, index, "HARMFUL" .. (filter and ("|" .. filter) or "")) end,
+		}, {__index = function(tbl, key) return C_UnitAuras[key] end}),
 		UnitName = function(unit)
 			local unitID = string.match(unit, "(%d+)")
 			if( unitID ) then

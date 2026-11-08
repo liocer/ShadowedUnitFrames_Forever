@@ -1,107 +1,166 @@
+--[[
+	Range indicator. Originally by Shadowed (Shadowed Unit Frames), ported to WoW Forever.
+
+	Forever: LibSpellRange is gone. Range comes from C_Spell.IsSpellInRange with Classic-era
+	spells, then UnitInRange for group members (secret result: applied with SetAlphaFromBoolean),
+	then CheckInteractDistance (28 yards) out of combat.
+]]
 local GetSpellName = C_Spell.GetSpellName
+local GetSpellInfo = C_Spell.GetSpellInfo
 local IsSpellUsable = C_Spell.IsSpellUsable
+local IsSpellInRange = C_Spell.IsSpellInRange
+local Secrets = ShadowUF.Secrets
+local issecretvalue = Secrets.IsSecret
+
+-- Spells checked in order; a unit counts as in range if any of them is in range (so melee + ranged
+-- spells cover hunters' dead zone). Spell IDs are rank 1, the names resolve to whatever rank is known.
 local Range = {
 	friendly = {
-		["PRIEST"] = {
-			(GetSpellName(17)), -- Power Word: Shield
-			(GetSpellName(527)), -- Purify
-		},
-		["DRUID"] = {
-			(GetSpellName(774)), -- Rejuvenation
-			(GetSpellName(2782)), -- Remove Corruption
-		},
-		["PALADIN"] = GetSpellName(19750), -- Flash of Light
-		["SHAMAN"] = GetSpellName(8004), -- Healing Surge
-		["WARLOCK"] = GetSpellName(5697), -- Unending Breath
-		--["DEATHKNIGHT"] = GetSpellName(47541), -- Death Coil
-		["MONK"] = GetSpellName(115450), -- Detox
+		["PRIEST"] = {2050, 2061, 139, 17}, -- Lesser Heal, Flash Heal, Renew, Power Word: Shield (40 yards)
+		["DRUID"] = {5185, 774}, -- Healing Touch, Rejuvenation (40 yards)
+		["PALADIN"] = {635, 19750}, -- Holy Light, Flash of Light (40 yards)
+		["SHAMAN"] = {331, 8004}, -- Healing Wave, Lesser Healing Wave (40 yards)
+		["MAGE"] = {475, 1459}, -- Remove Lesser Curse (40 yards), Arcane Intellect (30 yards)
+		["WARLOCK"] = {5697}, -- Unending Breath (30 yards)
 	},
 	hostile = {
-		["DEATHKNIGHT"] = {
-			(GetSpellName(47541)), -- Death Coil
-			(GetSpellName(49576)), -- Death Grip
-		},
-		["DEMONHUNTER"] = GetSpellName(185123), -- Throw Glaive
-		["DRUID"] = GetSpellName(8921),  -- Moonfire
-		["HUNTER"] = {
-			(GetSpellName(193455)), -- Cobra Shot
-			(GetSpellName(19434)), -- Aimed Short
-			(GetSpellName(193265)), -- Hatchet Toss
-		},
-		["MAGE"] = {
-			(GetSpellName(116)), -- Frostbolt
-			(GetSpellName(30451)), -- Arcane Blast
-			(GetSpellName(133)), -- Fireball
-		},
-		["MONK"] = GetSpellName(115546), -- Provoke
-		["PALADIN"] = GetSpellName(62124), -- Hand of Reckoning
-		["PRIEST"] = GetSpellName(585), -- Smite
-		--["ROGUE"] = GetSpellName(1725), -- Distract
-		["SHAMAN"] = GetSpellName(188196), -- Lightning Bolt
-		["WARLOCK"] = GetSpellName(686), -- Shadow Bolt
-		["WARRIOR"] = GetSpellName(355), -- Taunt
+		["PRIEST"] = {589, 585, 8092}, -- Shadow Word: Pain, Smite, Mind Blast (30 yards)
+		["DRUID"] = {5176, 8921}, -- Wrath, Moonfire (30 yards)
+		["PALADIN"] = {20473, 20271, 853}, -- Holy Shock (20 yards, talent), Judgement, Hammer of Justice (10 yards)
+		["SHAMAN"] = {403, 8042}, -- Lightning Bolt (30 yards), Earth Shock (20 yards)
+		["MAGE"] = {116, 133, 2136}, -- Frostbolt (30 yards), Fireball (35 yards), Fire Blast (20 yards)
+		["WARLOCK"] = {686, 348, 172}, -- Shadow Bolt, Immolate, Corruption (30 yards)
+		["HUNTER"] = {3044, 75, 1978, 2974, 2973}, -- Arcane Shot, Auto Shot, Serpent Sting (35 yards, 8 yard minimum), Wing Clip, Raptor Strike (melee)
+		["ROGUE"] = {2764, 2480, 7918, 7919, 1752}, -- Throw, Shoot Bow/Gun/Crossbow (30 yards), Sinister Strike (melee)
+		["WARRIOR"] = {2480, 7918, 7919, 2764, 78}, -- Shoot Bow/Gun/Crossbow, Throw (30 yards), Heroic Strike (melee)
 	},
 }
 
 ShadowUF:RegisterModule(Range, "range", ShadowUF.L["Range indicator"])
 
-local LSR = LibStub("SpellRange-1.0")
-
 local playerClass = select(2, UnitClass("player"))
-local rangeSpells = {}
+local rangeSpells = {friendly = {}, hostile = {}}
+local INTERACT_FOLLOW = 4 -- CheckInteractDistance index, 28 yards
 
-local UnitPhaseReason_o = UnitPhaseReason
-local UnitPhaseReason = function(unit)
-	local phase = UnitPhaseReason_o(unit)
-	if (phase == Enum.PhaseReason.WarMode or phase == Enum.PhaseReason.ChromieTime or Enum.PhaseReason.TimerunningHwt) and UnitIsVisible(unit) then
-		return nil
+-- Phase reasons that don't matter while we can see the unit
+local ignoredPhases = {}
+if( Enum.PhaseReason ) then
+	for _, key in pairs({"WarMode", "ChromieTime", "TimerunningHwt"}) do
+		if( Enum.PhaseReason[key] ) then ignoredPhases[Enum.PhaseReason[key]] = true end
 	end
-	return phase
+end
+
+local function isPhased(unit)
+	local phase = UnitPhaseReason and Secrets.Read(UnitPhaseReason, unit)
+	if( phase == nil ) then return false end
+	if( ignoredPhases[phase] and UnitIsVisible(unit) ) then return false end
+	return true
+end
+
+-- In range result for a list of spells: true/false, a secret boolean, or nil if no spell could check it
+local function checkSpells(spells, unit)
+	local result
+	for i = 1, #spells do
+		local inRange = IsSpellInRange(spells[i], unit)
+		if( issecretvalue(inRange) ) then
+			-- Can't combine a secret with the others; use it if nothing else said yes
+			if( result ~= true ) then result = inRange end
+			return result
+		elseif( inRange == true or inRange == 1 ) then
+			return true
+		elseif( inRange ~= nil ) then
+			result = false
+		end
+	end
+
+	return result
+end
+
+-- true/false, secret boolean, or nil when nothing could tell
+local function getInRange(unit)
+	local spells
+	if( UnitCanAssist("player", unit) ) then
+		spells = rangeSpells.friendly
+	elseif( UnitCanAttack("player", unit) ) then
+		spells = rangeSpells.hostile
+	end
+
+	if( spells and #spells > 0 ) then
+		local inRange = checkSpells(spells, unit)
+		if( inRange ~= nil ) then return inRange end
+	end
+
+	-- That didn't work, but they are grouped lets try the actual API for this (40 yards, may be secret)
+	if( Secrets.Read(UnitInRaid, unit) or Secrets.Read(UnitInParty, unit) ) then
+		local inRange, checkedRange = UnitInRange(unit)
+		if( issecretvalue(checkedRange) or issecretvalue(inRange) ) then
+			return inRange
+		elseif( checkedRange ) then
+			return inRange and true or false
+		end
+	end
+
+	-- Last resort, follow distance; this one isn't allowed on every unit in combat
+	if( not InCombatLockdown() ) then
+		local ok, inRange = pcall(CheckInteractDistance, unit, INTERACT_FOLLOW)
+		if( ok and not issecretvalue(inRange) and inRange ~= nil ) then
+			return inRange and true or false
+		end
+	end
+
+	return nil
 end
 
 local function checkRange(self)
 	local frame = self.parent
+	local config = ShadowUF.db.profile.units[frame.unitType].range
 
-	-- Check which spell to use
-	local spell
-	if( UnitCanAssist("player", frame.unit) ) then
-		spell = rangeSpells.friendly
-	elseif( UnitCanAttack("player", frame.unit) ) then
-		spell = rangeSpells.hostile
+	if( not UnitIsConnected(frame.unit) or isPhased(frame.unit) ) then
+		frame:SetRangeAlpha(config.oorAlpha)
+		return
 	end
 
-	if( not UnitIsConnected(frame.unit) or UnitPhaseReason(frame.unit) ) then
-		frame:SetRangeAlpha(ShadowUF.db.profile.units[frame.unitType].range.oorAlpha)
-	elseif( spell ) then
-		frame:SetRangeAlpha(LSR.IsSpellInRange(spell, frame.unit) == 1 and ShadowUF.db.profile.units[frame.unitType].range.inAlpha or ShadowUF.db.profile.units[frame.unitType].range.oorAlpha)
-	-- That didn't work, but they are grouped lets try the actual API for this, it's a bit flaky though and not that useful generally
-	elseif( UnitInRaid(frame.unit) or UnitInParty(frame.unit) ) then
-		frame:SetRangeAlpha(UnitInRange(frame.unit, "player") and ShadowUF.db.profile.units[frame.unitType].range.inAlpha or ShadowUF.db.profile.units[frame.unitType].range.oorAlpha)
+	local inRange = getInRange(frame.unit)
+	if( issecretvalue(inRange) ) then
+		-- Hand the secret straight to the frame; the combat fader owns the alpha while it's faded out
+		if( not frame.disableRangeAlpha and pcall(frame.SetAlphaFromBoolean, frame, inRange, config.inAlpha, config.oorAlpha) ) then
+			frame.rangeAlpha = nil
+		end
 	-- Nope, just show in range :(
+	elseif( inRange == nil ) then
+		frame:SetRangeAlpha(config.inAlpha)
 	else
-		frame:SetRangeAlpha(ShadowUF.db.profile.units[frame.unitType].range.inAlpha)
+		frame:SetRangeAlpha(inRange and config.inAlpha or config.oorAlpha)
 	end
 end
 
+-- Is this spell (name or ID) one we can use for range checks?
+local function isKnownSpell(spell)
+	if( not spell or spell == "" ) then return false end
+	if( GetSpellInfo(spell) ) then return true end
+	return IsSpellUsable(spell) and true or false
+end
+
 local function updateSpellCache(category)
-	rangeSpells[category] = nil
-	if( ShadowUF.db.profile.range[category .. playerClass] and IsSpellUsable(ShadowUF.db.profile.range[category .. playerClass]) ) then
-		rangeSpells[category] = ShadowUF.db.profile.range[category .. playerClass]
+	local list = rangeSpells[category]
+	table.wipe(list)
 
-	elseif( ShadowUF.db.profile.range[category .. "Alt" .. playerClass] and IsSpellUsable(ShadowUF.db.profile.range[category .. "Alt" .. playerClass]) ) then
-		rangeSpells[category] = ShadowUF.db.profile.range[category .. "Alt" .. playerClass]
+	-- Custom spells from the options win
+	for _, key in ipairs({category .. playerClass, category .. "Alt" .. playerClass}) do
+		local spell = ShadowUF.db.profile.range[key]
+		if( isKnownSpell(spell) ) then
+			table.insert(list, spell)
+		end
+	end
+	if( #list > 0 ) then return end
 
-	elseif( Range[category][playerClass] ) then
-		if( type(Range[category][playerClass]) == "table" ) then
-			for i = 1, #Range[category][playerClass] do
-				local spell = Range[category][playerClass][i]
-				if( spell and IsSpellUsable(spell) ) then
-					rangeSpells[category] = spell
-					break
-				end
-			end
-		elseif( Range[category][playerClass] and IsSpellUsable(Range[category][playerClass]) ) then
-			rangeSpells[category] = Range[category][playerClass]
+	local defaults = Range[category][playerClass]
+	if( not defaults ) then return end
+
+	for _, spellID in ipairs(defaults) do
+		local name = GetSpellName(spellID)
+		if( name and isKnownSpell(name) ) then
+			table.insert(list, name)
 		end
 	end
 end
@@ -121,7 +180,7 @@ local function cancelTimer(frame)
 end
 
 function Range:ForceUpdate(frame)
-	if( UnitIsUnit(frame.unit, "player") ) then
+	if( Secrets.Read(UnitIsUnit, frame.unit, "player") ) then
 		frame:SetRangeAlpha(ShadowUF.db.profile.units[frame.unitType].range.inAlpha)
 		cancelTimer(frame)
 	else
@@ -135,7 +194,8 @@ function Range:OnEnable(frame)
 		frame.range = CreateFrame("Frame", nil, frame)
 	end
 
-	frame:RegisterNormalEvent("PLAYER_SPECIALIZATION_CHANGED", self, "SpellChecks")
+	-- New spells or ranks learned
+	frame:RegisterNormalEvent("SPELLS_CHANGED", self, "SpellChecks")
 	frame:RegisterUpdateFunc(self, "ForceUpdate")
 
 	createTimer(frame)

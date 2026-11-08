@@ -1,11 +1,32 @@
 --[[
 	Shadowed Unit Frames, Shadowed of Mal'Ganis (US) PvP
+	Maintained by Hendrik Leppkes (Nevcairiel).
+
+	Shadowed Unit Frames Forever: port to WoW Forever (Classic content on the modern engine,
+	with secret combat values). See PORTING.md and notes/ for what changed.
 ]]
 
-ShadowUF = select(2, ...)
+local addonName, namespace = ...
+
+-- The original Shadowed Unit Frames uses the same globals (ShadowUF, slash commands, templates).
+-- If it's loaded as well the two would fight, so we stay dormant and tell the user.
+local originalShadowUF = ShadowUF
+local function originalLoaded()
+	return C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("ShadowedUnitFrames") and true or false
+end
+
+namespace.conflict = originalLoaded() or ( type(originalShadowUF) == "table" and originalShadowUF ~= namespace ) or nil
+
+-- Our own files need ShadowUF to be our namespace while they load; on a conflict it's handed
+-- back to the original addon once our files are done (see ADDON_LOADED at the bottom).
+ShadowUF = namespace
+-- Everything in this file talks to our namespace, even after the global is handed back
+local ShadowUF = namespace
 
 local L = ShadowUF.L
-ShadowUF.dbRevision = 63
+ShadowUF.addonName = addonName
+-- Revision 64 is the first Forever revision (retail-only modules and settings removed)
+ShadowUF.dbRevision = 64
 ShadowUF.playerUnit = "player"
 ShadowUF.enabledUnits = {}
 ShadowUF.modules = {}
@@ -27,6 +48,8 @@ for i=1, 5 do ShadowUF.arenaUnits[i] = "arena" .. i end
 for i=1, 4 do ShadowUF.battlegroundUnits[i] = "arena" .. i end
 
 function ShadowUF:OnInitialize()
+	if( self.conflict ) then return end
+
 	self.defaults = {
 		profile = {
 			locked = false,
@@ -91,22 +114,30 @@ function ShadowUF:OnInitialize()
 	if LibDualSpec then LibDualSpec:EnhanceDatabase(self.db, "ShadowedUnitFrames") end
 end
 
+-- Looks an aura up by spell name or ID and returns it unpacked UnitAura style.
+-- Secret-safe: an aura the game won't tell us about (secret) is treated as not found, so
+-- callers can keep using "if( ShadowUF.UnitAuraBySpell(...) ) then".
+local issecretvalue = issecretvalue or function() return false end
 function ShadowUF.UnitAuraBySpell(unit, spell, filter)
 	local auraData
-	if type(spell) == "string" then
-		auraData = C_UnitAuras.GetAuraDataBySpellName(unit, spell, filter)
-	elseif type(spell) == "number" then
+	if( type(spell) == "string" ) then
+		local ok, data = pcall(C_UnitAuras.GetAuraDataBySpellName, unit, spell, filter)
+		auraData = ok and data or nil
+	elseif( type(spell) == "number" ) then
 		local index = 0
 		while true do
 			index = index + 1
-			local data = C_UnitAuras.GetAuraDataByIndex(unit, index, filter)
-			if not data then break end
-			if data.spellId == spell then
+			local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, unit, index, filter)
+			if( not ok or not data ) then break end
+			local spellId = data.spellId
+			if( not issecretvalue(spellId) and spellId == spell ) then
 				auraData = data
 				break
 			end
 		end
 	end
+
+	if( not auraData or issecretvalue(auraData.name) ) then return end
 	return AuraUtil.UnpackAuraData(auraData)
 end
 
@@ -118,14 +149,56 @@ function ShadowUF:CheckBuild()
 	self.db.profile.wowBuild = build
 end
 
+-- Settings for things that don't exist on WoW Forever (retail classes, specs and class resources).
+-- Used to clean up profiles that came from retail/classic SUF (revision 63 or older).
+ShadowUF.removedModules = {"runeBar", "soulShards", "holyPower", "chi", "staggerBar", "arcaneCharges", "essence", "priestBar", "shamanBar",
+	"demonicFuryBar", "burningEmbersBar", "shadowOrbs", "eclipseBar", "monkBar"}
+ShadowUF.removedClassColors = {"DEATHKNIGHT", "MONK", "DEMONHUNTER", "EVOKER"}
+ShadowUF.removedPowerColors = {"RUNES", "RUNIC_POWER", "INSANITY", "MAELSTROM", "LUNAR_POWER", "HOLYPOWER", "SOULSHARDS", "ARCANECHARGES", "CHI", "FURY", "PAIN",
+	"STATUE", "RUNEOFPOWER", "MUSHROOMS", "STAGGER_GREEN", "STAGGER_YELLOW", "STAGGER_RED", "ESSENCE"}
+ShadowUF.removedIndicators = {"arenaSpec"}
+
+function ShadowUF:RemoveRetailSettings()
+	local profile = self.db.profile
+	local removedAnchors = {}
+	for _, key in pairs(self.removedModules) do removedAnchors["$" .. key] = true end
+
+	for unit, config in pairs(profile.units) do
+		for _, key in pairs(self.removedModules) do
+			rawset(config, key, nil)
+		end
+
+		local indicators = rawget(config, "indicators")
+		if( indicators ) then
+			for _, key in pairs(self.removedIndicators) do
+				rawset(indicators, key, nil)
+			end
+		end
+
+		-- Text rows anchored to bars that are gone
+		local text = rawget(config, "text")
+		if( text ) then
+			for i=#(text), 1, -1 do
+				local row = rawget(text, i)
+				if( row and row.anchorTo and removedAnchors[row.anchorTo] ) then
+					table.remove(text, i)
+				end
+			end
+		end
+	end
+
+	for _, key in pairs(self.removedClassColors) do
+		if( profile.classColors ) then profile.classColors[key] = nil end
+		if( profile.auraIndicators and profile.auraIndicators.disabled ) then profile.auraIndicators.disabled[key] = nil end
+	end
+
+	for _, key in pairs(self.removedPowerColors) do
+		if( profile.powerColors ) then profile.powerColors[key] = nil end
+	end
+end
+
 function ShadowUF:CheckUpgrade()
 	local revision = self.db.profile.revision or self.dbRevision
-	if (revision <= 62 ) then
-		-- evoker setup
-		self.db.profile.classColors.EVOKER = {r = 0.20, g = 0.58, b = 0.50}
-		self.db.profile.powerColors.ESSENCE = {r = 0.40, g = 0.80, b = 1.00}
-		self.db.profile.units.player.essence = {enabled = true, anchorTo = "$parent", order = 60, height = 0.40, anchorPoint = "BR", x = -8, y = 6, size = 12, spacing = -2, growth = "LEFT", isBar = true, showAlways = true}
-	end
 	if (revision <= 61 ) then
 		if self.db.profile.bars.texture == "Smooth" then
 			self.db.profile.bars.texture = "Smoother"
@@ -182,31 +255,8 @@ function ShadowUF:CheckUpgrade()
 		end
 	end
 
-	if( revision <= 56 ) then
-		-- new classes
-		self.db.profile.classColors.DEMONHUNTER = {r = 0.64, g = 0.19, b = 0.79}
-
-		-- new power types
-		self.db.profile.powerColors.INSANITY = {r = 0.40, g = 0, b = 0.80}
-		self.db.profile.powerColors.MAELSTROM = {r = 0.00, g = 0.50, b = 1.00}
-		self.db.profile.powerColors.FURY = {r = 0.788, g = 0.259, b = 0.992}
-		self.db.profile.powerColors.PAIN = {r = 1, g = 0, b = 0}
-		self.db.profile.powerColors.LUNAR_POWER = {r = 0.30, g = 0.52, b = 0.90}
-		self.db.profile.powerColors.ARCANECHARGES = {r = 0.1, g = 0.1, b = 0.98}
-
-		-- new bars
-		local config = self.db.profile.units
-		config.player.priestBar = {enabled = true, background = true, height = 0.40, order = 70}
-		config.player.shamanBar = {enabled = true, background = true, height = 0.40, order = 70}
-		config.player.arcaneCharges = {enabled = true, anchorTo = "$parent", order = 60, height = 0.40, anchorPoint = "BR", x = -8, y = 6, size = 12, spacing = -2, growth = "LEFT", isBar = true, showAlways = true}
-
-		-- clean out old bars
-		config.player.demonicFuryBar = nil
-		config.player.burningEmbersBar = nil
-		config.player.shadowOrbs = nil
-		config.player.eclipseBar = nil
-		config.player.monkBar = nil
-	end
+	-- Retail revisions 56 (new classes/bars) and 62 (evoker) only added things Forever does not have;
+	-- the revision 63 cleanup at the end removes them from imported profiles.
 
 	if( revision <= 49 ) then
 		ShadowUF:LoadDefaultLayout(true)
@@ -225,7 +275,6 @@ function ShadowUF:CheckUpgrade()
 
 	if( revision <= 46 ) then
 		local config = self.db.profile.units.arena
-		config.indicators.arenaSpec = {enabled = true, anchorPoint = "LC", size = 28, x = 0, y = 0, anchorTo = "$parent"}
 		config.indicators.lfdRole = {enabled = true, anchorPoint = "BR", size = 14, x = 3, y = 14, anchorTo = "$parent"}
 	end
 
@@ -243,6 +292,11 @@ function ShadowUF:CheckUpgrade()
 			end
 		end
 	end
+
+	-- First Forever revision: strip everything retail-only out of imported profiles
+	if( revision <= 63 ) then
+		self:RemoveRetailSettings()
+	end
 end
 
 local function zoneEnabled(zone, zoneList)
@@ -258,12 +312,7 @@ local function zoneEnabled(zone, zoneList)
 end
 
 function ShadowUF:LoadUnits()
-	-- CanHearthAndResurrectFromArea() returns true for world pvp areas, according to BattlefieldFrame.lua
-	local instanceType = CanHearthAndResurrectFromArea() and "pvp" or select(2, IsInInstance())
-	if( instanceType == "scenario" ) then instanceType = "party" end
-	if( instanceType == "interior" ) then instanceType = "neighborhood" end
-
-	if( not instanceType ) then instanceType = "none" end
+	local instanceType = self:GetInstanceType()
 
 	for _, type in pairs(self.unitList) do
 		local enabled = self.db.profile.units[type].enabled
@@ -362,24 +411,16 @@ function ShadowUF:LoadUnitDefaults()
 	self.defaults.profile.units.player.healthBar.predicted = true
 	self.defaults.profile.units.player.powerBar.predicted = true
 	self.defaults.profile.units.player.indicators.status.enabled = true
-	self.defaults.profile.units.player.runeBar = {enabled = false}
+	-- Forever: no rune/soul shard/holy power/chi/stagger/arcane charge/essence/priest or shaman mana bars
 	self.defaults.profile.units.player.totemBar = {enabled = false}
 	self.defaults.profile.units.player.druidBar = {enabled = false}
-	self.defaults.profile.units.player.priestBar = {enabled = true}
-	self.defaults.profile.units.player.shamanBar = {enabled = true}
+	self.defaults.profile.units.player.powerPrediction = {enabled = true, shade = 0.6}
 	self.defaults.profile.units.player.xpBar = {enabled = false}
 	self.defaults.profile.units.player.fader = {enabled = false}
-	self.defaults.profile.units.player.soulShards = {enabled = true, isBar = true}
-	self.defaults.profile.units.player.arcaneCharges = {enabled = true, isBar = true}
-	self.defaults.profile.units.player.staggerBar = {enabled = true}
 	self.defaults.profile.units.player.comboPoints = {enabled = true, isBar = true}
-	self.defaults.profile.units.player.holyPower = {enabled = true, isBar = true}
-	self.defaults.profile.units.player.chi = {enabled = true, isBar = true}
 	self.defaults.profile.units.player.indicators.lfdRole = {enabled = true, size = 0, x = 0, y = 0}
 	self.defaults.profile.units.player.auraPoints = {enabled = false, isBar = true}
-	self.defaults.profile.units.player.essence = {enabled = true, isBar = true}
-	table.insert(self.defaults.profile.units.player.text, {enabled = true, text = "", anchorTo = "", anchorPoint = "C", size = 0, x = 0, y = 0, default = true})
-	table.insert(self.defaults.profile.units.player.text, {enabled = true, text = "", anchorTo = "", anchorPoint = "C", size = 0, x = 0, y = 0, default = true})
+	-- Text row 7: totem timers
 	table.insert(self.defaults.profile.units.player.text, {enabled = true, text = "", anchorTo = "", anchorPoint = "C", size = 0, x = 0, y = 0, default = true})
 
     -- PET
@@ -417,7 +458,6 @@ function ShadowUF:LoadUnitDefaults()
 	self.defaults.profile.units.arena.auras.debuffs.maxRows = 1
 	self.defaults.profile.units.arena.auras.buffs.maxRows = 1
 	self.defaults.profile.units.arena.offset = 0
-	self.defaults.profile.units.arena.indicators.arenaSpec = {enabled = true, size = 0, x = 0, y = 0}
 	self.defaults.profile.units.arena.indicators.lfdRole = {enabled = true, size = 0, x = 0, y = 0}
 	-- BATTLEGROUND
 	self.defaults.profile.units.battleground.enabled = false
@@ -507,82 +547,25 @@ function ShadowUF:LoadUnitDefaults()
 			["c"] = {boss = {priority = 100}, curable = {priority = 100}},
 		},
 		auras = {
+			-- Forever: only Classic-era spells are kept (retail-only spells and the Hellfire Citadel raid list were removed).
+			-- These are spell IDs of the first rank; the auraIndicators module also matches by spell name.
 			["20707"] = [[{indicator = '', group = "Warlock", priority = 10, r = 0.42, g = 0.21, b = 0.65}]],
-			["116849"] = [[{r=0.19607843137255, group="Monk", indicator="c", g=1, player=false, duration=true, b=0.3843137254902, alpha=1, priority=0, icon=true, iconTexture="Interface\\Icons\\ability_monk_chicocoon"}]],
-			["155777"] = [[{r=0.57647058823529, group="Druid", indicator="tr", g=0.28235294117647, player=true, duration=true, b=0.6156862745098, priority=100, alpha=1, iconTexture="Interface\\Icons\\Spell_Nature_Rejuvenation"}]],
-			["121176"] = [[{alpha=1, b=0, priority=0, r=0.062745098039216, group="PvP Flags", indicator="bl", g=1, iconTexture="Interface\\Icons\\INV_BannerPVP_03"}]],
 			["19705"] = [[{r=0.80392156862745, group="Food", indicator="", g=0.76470588235294, missing=true, duration=true, priority=0, alpha=1, b=0.24313725490196}]],
-			["53563"] = [[{r=0.64313725490196, group="Paladin", indicator="tr", g=0.24705882352941, player=true, alpha=1, b=0.73333333333333, priority=100, duration=false, iconTexture="Interface\\Icons\\Ability_Paladin_BeaconofLight"}]],
 			["774"] = [[{r=0.57647058823529, group="Druid", indicator="tr", g=0.28235294117647, player=true, duration=true, b=0.6156862745098, priority=100, alpha=1, iconTexture="Interface\\Icons\\Spell_Nature_Rejuvenation"}]],
-			["33206"] = [[{r=0, group="Priest", indicator="c", g=0, b=0, duration=true, priority=0, icon=true, iconTexture="Interface\\Icons\\Spell_Holy_PainSupression"}]],
 			["6788"] = [[{b=0.29019607843137, group="Priest", indicator="tl", alpha=1, player=false, g=0.56862745098039, duration=true, r=0.83921568627451, priority=20, icon=false, iconTexture="Interface\\Icons\\Spell_Holy_AshesToAshes"}]],
-			["33763"] = [[{r=0.23137254901961, group="Druid", indicator="tl", g=1, player=true, duration=true, alpha=1, priority=0, b=0.2, iconTexture="Interface\\Icons\\INV_Misc_Herb_Felblossom"}]],
 			["139"] = [[{r=0.23921568627451, group="Priest", indicator="tr", g=1, player=true, alpha=1, duration=true, b=0.39607843137255, priority=10, icon=false, iconTexture="Interface\\Icons\\Spell_Holy_Renew"}]],
-			["41635"] = [[{r=1, group="Priest", indicator="br", g=0.90196078431373, missing=false, player=true, duration=false, alpha=1, b=0, priority=50, icon=false, iconTexture="Interface\\Icons\\Spell_Holy_PrayerOfMendingtga"}]],
-			["47788"] = [[{r=0, group="Priest", indicator="c", g=0, b=0, duration=true, priority=0, icon=true, iconTexture="Interface\\Icons\\Spell_Holy_GuardianSpirit"}]],
-			["61295"] = [[{r=0.17647058823529, group="Shaman", indicator="tl", g=0.4, player=true, alpha=1, duration=true, b=1, priority=0, icon=false, iconTexture="Interface\\Icons\\spell_nature_riptide"}]],
 			["17"] = [[{r=1, group="Priest", indicator="tl", g=0.41960784313725, player=true, alpha=1, duration=true, b=0.5843137254902, priority=0, icon=false, iconTexture="Interface\\Icons\\Spell_Holy_PowerWordShield"}]],
-			["152118"] = [[{r=1, group="Priest", indicator="tl", g=0.41960784313725, player=true, alpha=1, duration=true, b=0.5843137254902, priority=0, icon=false, iconTexture="Interface\\Icons\\Ability_Priest_ClarityOfWill"}]],
 			["23335"] = [[{r=0, group="PvP Flags", indicator="bl", g=0, duration=false, b=0, priority=0, icon=true, iconTexture="Interface\\Icons\\INV_BannerPVP_02"}]],
-			["102342"] = [[{r=0, group="Druid", indicator="c", g=0, duration=true, b=0, priority=0, icon=true, iconTexture="Interface\\Icons\\spell_druid_ironbark"}]],
-			["121177"] = [[{r=0.78039215686275, group="PvP Flags", indicator="bl", g=0.42352941176471, alpha=1, b=0, priority=0, icon=false, iconTexture="Interface\\Icons\\INV_BannerPVP_03"}]],
 			["586"] = [[{r=0, group="Priest", indicator="", g=0.85882352941176, selfColor={alpha=1, b=1, g=0.93725490196078, r=0, }, alpha=1, priority=0, b=1, iconTexture="Interface\\Icons\\Spell_Magic_LesserInvisibilty"}]],
 			["23333"] = [[{icon=true, b=0, priority=0, r=0, group="PvP Flags", indicator="bl", g=0, iconTexture="Interface\\Icons\\INV_BannerPVP_01"}]],
-			["119611"] = [[{r=0.26274509803922, group="Monk", indicator="tl", g=0.76078431372549, player=true, duration=true, alpha=1, b=0.53725490196078, priority=0, icon=false, iconTexture="Interface\\Icons\\ability_monk_renewingmists"}]],
 			["8936"] = [[{r=0.12156862745098, group="Druid", indicator="br", g=0.45882352941176, player=true, duration=true, b=0.12156862745098, priority=100, alpha=1, iconTexture="Interface\\Icons\\Spell_Nature_ResistNature"}]],
-			["34976"] = [[{r=0, group="PvP Flags", indicator="bl", g=0, player=false, b=0, priority=0, icon=true, iconTexture="Interface\\Icons\\INV_BannerPVP_03"}]],
-			["121164"] = [[{alpha=1, b=1, priority=0, r=0, group="PvP Flags", indicator="bl", g=0.003921568627451, iconTexture="Interface\\Icons\\INV_BannerPVP_03"}]],
-			["48438"] = [[{r=0.55294117647059, group="Druid", indicator="31685", g=1, player=true, duration=true, b=0.3921568627451, priority=100, alpha=1, iconTexture="Interface\\Icons\\Ability_Druid_Flourish"}]],
 			["1022"] = [[{r=0, group="Paladin", indicator="c", g=0, player=false, duration=true, b=0, priority=0, icon=true, iconTexture="Interface\\Icons\\Spell_Holy_SealOfProtection"}]],
-			["121175"] = [[{r=1, group="PvP Flags", indicator="bl", g=0.24705882352941, b=0.90196078431373, alpha=1, priority=0, icon=false, iconTexture="Interface\\Icons\\INV_BannerPVP_03"}]],
-			["64844"] = [[{r=0.67843137254902, group="Priest", indicator="31685", g=0.30588235294118, player=true, alpha=1, priority=0, b=0.14117647058824, iconTexture="Interface\\Icons\\Spell_Holy_DivineProvidence"}]],
-			["124081"] = [[{r=0.51372549019608, group="Monk", indicator="br", g=1, player=true, duration=true, b=0.90588235294118, alpha=1, priority=100, icon=false, iconTexture="Interface\\Icons\\ability_monk_forcesphere"}]],
 			["29166"] = [[{r=0, group="Druid", indicator="c", g=0, b=0, duration=true, priority=0, icon=true, iconTexture="Interface\\Icons\\Spell_Nature_Lightning"}]],
-			["189895"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\INV_Enchant_VoidSphere\";}",
-			["189627"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\achievement_zone_cataclysmgreen\";}",
-			["181306"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Ability_Mage_LivingBomb\";}",
-			["181753"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_felarakkoa_feldetonation_green\";}",
-			["188929"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Ability_Hunter_MarkedForDeath\";}",
-			["189032"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_malkorok_blightofyshaarj_green\";}",
-			["182826"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Fire_FelFlameRing\";}",
-			["181515"] = "{b=0;g=0;priority=1;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Shadow_SeedOfDestruction\";}",
-			["179219"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_felarakkoa_feldetonation_red\";}",
-			["179864"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Arcane_PrismaticCloak\";}",
-			["184124"] = "{b=0;g=0;priority=1;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Shadow_AntiMagicShell\";}",
-			["184450"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_bossfelorcs_necromancer_purple\";}",
-			["186134"] = "{icon=true;b=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"tr\";g=0;iconTexture=\"Interface\\\\Icons\\\\spell_fel_elementaldevastation\";}",
-			["185066"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_bossfelorcs_necromancer_red\";}",
-			["183817"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Ability_Warlock_EverlastingAffliction\";}",
-			["179978"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_bossgorefiend_touchofdoom\";}",
-			["182280"] = "{icon=true;b=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";g=0;iconTexture=\"Interface\\\\Icons\\\\Ability_Hunter_MarkedForDeath\";}",
-			["189031"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_malkorok_blightofyshaarj_yellow\";}",
-			["186500"] = "{b=0;g=0;priority=1;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"INTERFACE\\\\ICONS\\\\inv_misc_steelweaponchain\";}",
-			["188666"] = "{b=0;g=0;priority=1;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"INTERFACE\\\\ICONS\\\\ability_warlock_soulsiphon\";}",
-			["186333"] = "{b=0;g=0;priority=1;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Shadow_DevouringPlague\";}",
-			["186135"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"tr\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Shadow_AntiShadow\";}",
-			["181275"] = "{icon=true;b=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";g=0;iconTexture=\"Interface\\\\Icons\\\\spell_warlock_summonterrorguard\";}",
-			["181957"] = "{b=0;g=0;priority=2;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Frost_ArcticWinds\";}",
-			["189030"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_malkorok_blightofyshaarj_red\";}",
-			["182178"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_arakkoa_spinning_blade\";}",
-			["189777"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"INTERFACE\\\\ICONS\\\\inv_misc_steelweaponchain\";}",
-			["186407"] = "{r=0;indicator=\"c\";b=0;group=\"Hellfire Citadel\";priority=2;g=0;iconTexture=\"Interface\\\\Icons\\\\spell_fel_incinerate\";}",
-			["180166"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"tr\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Shadow_ChillTouch\";}",
-			["180079"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\inv_blacksmithdye_black\";}",
-			["184449"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_bossfelorcs_necromancer_purple\";}",
-			["185510"] = "{r=0;icon=true;indicator=\"tr\";b=0;group=\"Hellfire Citadel\";priority=1;g=0;iconTexture=\"INTERFACE\\\\ICONS\\\\inv_misc_steelweaponchain\";}",
-			["185065"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_bossfelorcs_necromancer_orange\";}",
-			["182769"] = "{r=0;icon=true;indicator=\"tr\";b=0;group=\"Hellfire Citadel\";priority=0;g=0;iconTexture=\"Interface\\\\Icons\\\\ability_fixated_state_purple\";}",
-			["181508"] = "{b=0;group=\"Hellfire Citadel\";indicator=\"c\";g=0;alpha=1;r=0;priority=1;icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Shadow_SeedOfDestruction\";}",
-			["181099"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Shadow_AuraOfDarkness\";}",
-			["181307"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\Spell_Shadow_Requiem\";}",
-			["183865"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_warlock_shadowfurytga\";}",
-			["186961"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_warlock_moltencoregreen\";}",
-			["182200"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_arakkoa_spinning_blade\";}",
-			["181597"] = "{b=0;g=0;priority=0;r=0;group=\"Hellfire Citadel\";indicator=\"c\";icon=true;iconTexture=\"Interface\\\\Icons\\\\ability_bossmannoroth_mannorothsgaze\";}",
 		}
 	}
 
-	for classToken in pairs(RAID_CLASS_COLORS) do
+	-- CLASS_SORT_ORDER only has the classes that exist on this client (RAID_CLASS_COLORS may list retail ones too)
+	for _, classToken in ipairs(CLASS_SORT_ORDER or {}) do
 		self.defaults.profile.auraIndicators.disabled[classToken] = {}
 	end
 end
@@ -677,34 +660,50 @@ local rehideFrame = function(self)
 	end
 end
 
+-- Forever: every frame here is looked up defensively, the camelot game type doesn't load all of
+-- Blizzard's mainline frames (rune/shard/holy power/... bars don't exist, arena and raid frames are
+-- load on demand) and a nil would stop everything after it from being hidden.
 local function basicHideBlizzardFrames(...)
 	for i=1, select("#", ...) do
 		local frame = select(i, ...)
-		frame:UnregisterAllEvents()
-		frame:HookScript("OnShow", rehideFrame)
-		frame:Hide()
+		if( frame ) then
+			frame:UnregisterAllEvents()
+			frame:HookScript("OnShow", rehideFrame)
+			frame:Hide()
+		end
 	end
 end
 
 local function hideBlizzardFrames(taint, ...)
 	for i=1, select("#", ...) do
 		local frame = select(i, ...)
-		UnregisterUnitWatch(frame)
-		frame:UnregisterAllEvents()
-		frame:Hide()
+		if( frame ) then
+			UnregisterUnitWatch(frame)
+			frame:UnregisterAllEvents()
+			frame:Hide()
 
-		if( frame.manabar ) then frame.manabar:UnregisterAllEvents() end
-		if( frame.healthbar ) then frame.healthbar:UnregisterAllEvents() end
-		if( frame.spellbar ) then frame.spellbar:UnregisterAllEvents() end
-		if( frame.powerBarAlt ) then frame.powerBarAlt:UnregisterAllEvents() end
+			if( frame.manabar ) then frame.manabar:UnregisterAllEvents() end
+			if( frame.healthbar ) then frame.healthbar:UnregisterAllEvents() end
+			if( frame.spellbar ) then frame.spellbar:UnregisterAllEvents() end
+			if( frame.powerBarAlt ) then frame.powerBarAlt:UnregisterAllEvents() end
 
-		if( taint ) then
-			frame.Show = ShadowUF.noop
-		else
-			frame:SetParent(ShadowUF.hiddenFrame)
-			frame:HookScript("OnShow", rehideFrame)
+			if( taint ) then
+				frame.Show = ShadowUF.noop
+			else
+				frame:SetParent(ShadowUF.hiddenFrame)
+				frame:HookScript("OnShow", rehideFrame)
+			end
 		end
 	end
+end
+
+-- Boss frames (and the camelot target frame) keep their bars inside TargetFrameContent
+local function getContentBars(frame)
+	local main = frame and frame.TargetFrameContent and frame.TargetFrameContent.TargetFrameContentMain
+	if( not main ) then return end
+
+	local health = main.HealthBarsContainer and main.HealthBarsContainer.HealthBar or main.HealthBar
+	return health, main.ManaBar
 end
 
 local active_hiddens = {}
@@ -716,14 +715,16 @@ function ShadowUF:HideBlizzardFrames()
 	if( self.db.profile.hidden.party and not active_hiddens.party ) then
 		if( PartyFrame ) then
 			hideBlizzardFrames(false, PartyFrame)
-			for memberFrame in PartyFrame.PartyMemberFramePool:EnumerateActive() do
-				if memberFrame.HealthBarContainer and memberFrame.HealthBarContainer.HealthBar then
-					hideBlizzardFrames(false, memberFrame, memberFrame.HealthBarContainer.HealthBar, memberFrame.ManaBar)
-				else
-					hideBlizzardFrames(false, memberFrame, memberFrame.HealthBar, memberFrame.ManaBar)
+			if( PartyFrame.PartyMemberFramePool ) then
+				for memberFrame in PartyFrame.PartyMemberFramePool:EnumerateActive() do
+					if memberFrame.HealthBarContainer and memberFrame.HealthBarContainer.HealthBar then
+						hideBlizzardFrames(false, memberFrame, memberFrame.HealthBarContainer.HealthBar, memberFrame.ManaBar)
+					else
+						hideBlizzardFrames(false, memberFrame, memberFrame.HealthBar, memberFrame.ManaBar)
+					end
 				end
+				PartyFrame.PartyMemberFramePool:ReleaseAll()
 			end
-			PartyFrame.PartyMemberFramePool:ReleaseAll()
 		else
 			for i=1, MAX_PARTY_MEMBERS do
 				local name = "PartyMemberFrame" .. i
@@ -734,10 +735,8 @@ function ShadowUF:HideBlizzardFrames()
 		-- This stops the compact party frame from being shown
 		UIParent:UnregisterEvent("GROUP_ROSTER_UPDATE")
 
-		-- This just makes sure
-		if( CompactPartyFrame ) then
-			hideBlizzardFrames(false, CompactPartyFrame)
-		end
+		-- This just makes sure (CompactPartyFrame is created on demand, parented to PartyFrame)
+		hideBlizzardFrames(false, _G["CompactPartyFrame"])
 	end
 
 	if( CompactRaidFrameManager ) then
@@ -746,24 +745,27 @@ function ShadowUF:HideBlizzardFrames()
 
 			local function hideRaid()
 				CompactRaidFrameManager:UnregisterAllEvents()
-				CompactRaidFrameContainer:UnregisterAllEvents()
+				if( CompactRaidFrameContainer ) then CompactRaidFrameContainer:UnregisterAllEvents() end
 				if( InCombatLockdown() ) then return end
 
 				CompactRaidFrameManager:Hide()
-				local shown = CompactRaidFrameManager_GetSetting("IsShown")
-				if( shown and shown ~= "0" ) then
-					CompactRaidFrameManager_SetSetting("IsShown", "0")
+				local getSetting, setSetting = _G["CompactRaidFrameManager_GetSetting"], _G["CompactRaidFrameManager_SetSetting"]
+				local shown = getSetting and getSetting("IsShown")
+				if( shown and shown ~= "0" and setSetting ) then
+					setSetting("IsShown", "0")
 				end
 			end
 
-			hooksecurefunc("CompactRaidFrameManager_UpdateShown", function()
-				if( self.db.profile.hidden.raid ) then
-					hideRaid()
-				end
-			end)
+			if( _G["CompactRaidFrameManager_UpdateShown"] ) then
+				hooksecurefunc("CompactRaidFrameManager_UpdateShown", function()
+					if( self.db.profile.hidden.raid ) then
+						hideRaid()
+					end
+				end)
+			end
 
 			hideRaid()
-			CompactRaidFrameContainer:HookScript("OnShow", hideRaid)
+			if( CompactRaidFrameContainer ) then CompactRaidFrameContainer:HookScript("OnShow", hideRaid) end
 			CompactRaidFrameManager:HookScript("OnShow", hideRaid)
 		end
 	end
@@ -773,6 +775,7 @@ function ShadowUF:HideBlizzardFrames()
 	end
 
 	if( self.db.profile.hidden.player and not active_hiddens.player ) then
+		-- AlternatePowerBar is the druid's mana bar while shapeshifted
 		hideBlizzardFrames(false, PlayerFrame, AlternatePowerBar)
 
 		-- We keep these in case someone is still using the default auras, otherwise it messes up vehicle stuff
@@ -787,7 +790,10 @@ function ShadowUF:HideBlizzardFrames()
 	end
 
 	if( self.db.profile.hidden.playerPower and not active_hiddens.playerPower ) then
-		basicHideBlizzardFrames(RuneFrame, WarlockPowerFrame, MonkHarmonyBarFrame, PaladinPowerBarFrame, MageArcaneChargesFrame, EssencePlayerFrame)
+		-- Forever only has the shaman totem frame as a player class resource (combo points sit on the
+		-- target frame, see ComboFrame below). The retail class bars are listed in case a later build adds them.
+		basicHideBlizzardFrames(TotemFrame, _G["RuneFrame"], _G["WarlockPowerFrame"], _G["MonkHarmonyBarFrame"], _G["PaladinPowerBarFrame"],
+			_G["MageArcaneChargesFrame"], _G["EssencePlayerFrame"], _G["RogueComboPointBarFrame"], _G["DruidComboPointBarFrame"])
 	end
 
 	if( self.db.profile.hidden.pet and not active_hiddens.pet ) then
@@ -795,11 +801,13 @@ function ShadowUF:HideBlizzardFrames()
 	end
 
 	if( self.db.profile.hidden.target and not active_hiddens.target ) then
-		hideBlizzardFrames(false, TargetFrame, ComboFrame, TargetFrameToT)
+		-- The target of target frame is created by TargetFrame:CreateTargetofTarget() as TargetFrame.totFrame
+		-- (global TargetFrameToT); ComboFrame is camelot's combo point ring on the target portrait.
+		hideBlizzardFrames(false, TargetFrame, ComboFrame, TargetFrame and TargetFrame.totFrame)
 	end
 
 	if( self.db.profile.hidden.focus and not active_hiddens.focus ) then
-		hideBlizzardFrames(false, FocusFrame, FocusFrameToT)
+		hideBlizzardFrames(false, FocusFrame, FocusFrame and FocusFrame.totFrame)
 	end
 
 	if( self.db.profile.hidden.boss and not active_hiddens.boss ) then
@@ -807,22 +815,23 @@ function ShadowUF:HideBlizzardFrames()
 
 		for i=1, MAX_BOSS_FRAMES do
 			local name = "Boss" .. i .. "TargetFrame"
-			if _G[name].TargetFrameContent then
-				if _G[name].TargetFrameContent.TargetFrameContentMain.HealthBarsContainer then
-					hideBlizzardFrames(false, _G[name], _G[name].TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar, _G[name].TargetFrameContent.TargetFrameContentMain.ManaBar)
+			local frame = _G[name]
+			if( frame ) then
+				local health, mana = getContentBars(frame)
+				if( health or mana ) then
+					hideBlizzardFrames(false, frame, health, mana)
 				else
-					hideBlizzardFrames(false, _G[name], _G[name].TargetFrameContent.TargetFrameContentMain.HealthBar, _G[name].TargetFrameContent.TargetFrameContentMain.ManaBar)
+					hideBlizzardFrames(false, frame, _G[name .. "HealthBar"], _G[name .. "ManaBar"])
 				end
-			else
-				hideBlizzardFrames(false, _G[name], _G[name .. "HealthBar"], _G[name .. "ManaBar"])
 			end
 		end
 	end
 
-	if( self.db.profile.hidden.arena and not active_hiddens.arenaTriggered ) then
+	-- Arena frames come from the load on demand Blizzard_Deprecated_ArenaUI on this client
+	if( self.db.profile.hidden.arena and not active_hiddens.arenaTriggered and _G["ArenaEnemyFramesContainer"] ) then
 		active_hiddens.arenaTriggered = true
 
-		hideBlizzardFrames(true, ArenaEnemyFramesContainer, ArenaEnemyPrepFramesContainer, ArenaEnemyMatchFramesContainer)
+		hideBlizzardFrames(true, _G["ArenaEnemyFramesContainer"], _G["ArenaEnemyPrepFramesContainer"], _G["ArenaEnemyMatchFramesContainer"])
 	end
 
 	if( self.db.profile.hidden.playerAltPower and not active_hiddens.playerAltPower ) then
@@ -843,7 +852,7 @@ local infoMessages = {
 	{}, {},
 	{
 		L["You must restart Shadowed Unit Frames."],
-		L["If you don't, you will be unable to use any combo point features (Chi, Holy Power, Combo Points, Aura Points, etc) until you do so."]
+		L["If you don't, you will be unable to use any combo point features (Combo Points, Aura Points, etc) until you do so."]
 	}
 }
 
@@ -900,46 +909,64 @@ function ShadowUF:Print(msg)
 	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99Shadow UF|r: " .. msg)
 end
 
-CONFIGMODE_CALLBACKS = CONFIGMODE_CALLBACKS or {}
-CONFIGMODE_CALLBACKS["Shadowed Unit Frames"] = function(mode)
-	if( mode == "ON" ) then
-		ShadowUF.db.profile.locked = false
-		ShadowUF.modules.movers.isConfigModeSpec = true
-	elseif( mode == "OFF" ) then
-		ShadowUF.db.profile.locked = true
-	end
+ShadowUF.credits = L["Shadowed Unit Frames was written by Shadowed and is maintained by Hendrik Leppkes (Nevcairiel). This is the WoW Forever port."]
 
-	ShadowUF.modules.movers:Update()
+local function printConflict()
+	ShadowUF:Print(L["The original Shadowed Unit Frames addon is also enabled. Shadowed Unit Frames Forever will not load while it is; disable one of them in the AddOns list and reload."])
 end
 
-SLASH_SHADOWEDUF1 = "/suf"
-SLASH_SHADOWEDUF2 = "/shadowuf"
-SLASH_SHADOWEDUF3 = "/shadoweduf"
-SLASH_SHADOWEDUF4 = "/shadowedunitframes"
-SlashCmdList["SHADOWEDUF"] = function(msg)
-	msg = msg and string.lower(msg)
-	if( msg and string.match(msg, "^profile (.+)") ) then
-		local profile = string.match(msg, "^profile (.+)")
-
-		for id, name in pairs(ShadowUF.db:GetProfiles()) do
-			if( string.lower(name) == profile ) then
-				ShadowUF.db:SetProfile(name)
-				ShadowUF:Print(string.format(L["Changed profile to %s."], name))
-				return
-			end
+-- Everything below here is shared with the original addon (same global names), so skip it on a conflict
+if( not ShadowUF.conflict ) then
+	CONFIGMODE_CALLBACKS = CONFIGMODE_CALLBACKS or {}
+	CONFIGMODE_CALLBACKS["Shadowed Unit Frames"] = function(mode)
+		if( mode == "ON" ) then
+			ShadowUF.db.profile.locked = false
+			ShadowUF.modules.movers.isConfigModeSpec = true
+		elseif( mode == "OFF" ) then
+			ShadowUF.db.profile.locked = true
 		end
 
-		ShadowUF:Print(string.format(L["Cannot find any profiles named \"%s\"."], profile))
-		return
+		ShadowUF.modules.movers:Update()
 	end
 
-	local loaded, reason = C_AddOns.LoadAddOn("ShadowedUF_Forever_Options")
-	if( not ShadowUF.Config ) then
-		DEFAULT_CHAT_FRAME:AddMessage(string.format(L["Failed to load ShadowedUF_Forever_Options, cannot open configuration. Error returned: %s"], reason and _G["ADDON_" .. reason] or ""))
-		return
-	end
+	SLASH_SHADOWEDUF1 = "/suf"
+	SLASH_SHADOWEDUF2 = "/shadowuf"
+	SLASH_SHADOWEDUF3 = "/shadoweduf"
+	SLASH_SHADOWEDUF4 = "/shadowedunitframes"
+	SlashCmdList["SHADOWEDUF"] = function(msg)
+		msg = msg and string.lower(msg)
+		if( not ShadowUF.db ) then
+			printConflict()
+			return
+		end
 
-	ShadowUF.Config:Open()
+		if( msg and string.match(msg, "^profile (.+)") ) then
+			local profile = string.match(msg, "^profile (.+)")
+
+			for id, name in pairs(ShadowUF.db:GetProfiles()) do
+				if( string.lower(name) == profile ) then
+					ShadowUF.db:SetProfile(name)
+					ShadowUF:Print(string.format(L["Changed profile to %s."], name))
+					return
+				end
+			end
+
+			ShadowUF:Print(string.format(L["Cannot find any profiles named \"%s\"."], profile))
+			return
+		elseif( msg == "help" or msg == "credits" or msg == "about" ) then
+			ShadowUF:Print(L["/suf - open the configuration, /suf profile <name> - switch profile, /suf help - this help."])
+			ShadowUF:Print(ShadowUF.credits)
+			return
+		end
+
+		local loaded, reason = C_AddOns.LoadAddOn("ShadowedUF_Forever_Options")
+		if( not ShadowUF.Config ) then
+			DEFAULT_CHAT_FRAME:AddMessage(string.format(L["Failed to load ShadowedUF_Forever_Options, cannot open configuration. Error returned: %s"], reason and _G["ADDON_" .. reason] or ""))
+			return
+		end
+
+		ShadowUF.Config:Open()
+	end
 end
 
 local frame = CreateFrame("Frame")
@@ -947,9 +974,32 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("ADDON_LOADED")
 frame:SetScript("OnEvent", function(self, event, addon)
 	if( event == "PLAYER_LOGIN" ) then
-		ShadowUF:OnInitialize()
 		self:UnregisterEvent("PLAYER_LOGIN")
-	elseif( event == "ADDON_LOADED" and ( addon == "Blizzard_ArenaUI" or addon == "Blizzard_CompactRaidFrames" ) ) then
-		ShadowUF:HideBlizzardFrames()
+		-- The original might have been loaded after us (or on demand)
+		if( not ShadowUF.conflict and originalLoaded() ) then ShadowUF.conflict = true end
+
+		if( ShadowUF.conflict ) then
+			self:UnregisterAllEvents()
+			printConflict()
+			return
+		end
+
+		ShadowUF:OnInitialize()
+
+		-- Say hello (and who wrote it) once per account
+		if( not ShadowUF.db.global.foreverWelcomed ) then
+			ShadowUF.db.global.foreverWelcomed = true
+			ShadowUF:Print(string.format(L["Shadowed Unit Frames Forever %s, type /suf to configure it."], C_AddOns.GetAddOnMetadata(addonName, "Version") or ""))
+			ShadowUF:Print(ShadowUF.credits)
+		end
+	elseif( event == "ADDON_LOADED" and addon == addonName ) then
+		-- All our files are loaded; hand the global back to the original addon if it's here
+		if( ShadowUF.conflict and type(originalShadowUF) == "table" ) then
+			_G.ShadowUF = originalShadowUF
+		end
+	elseif( event == "ADDON_LOADED" and ( addon == "Blizzard_ArenaUI" or addon == "Blizzard_Deprecated_ArenaUI" or addon == "Blizzard_CompactRaidFrames" ) ) then
+		if( ShadowUF.db ) then
+			ShadowUF:HideBlizzardFrames()
+		end
 	end
 end)

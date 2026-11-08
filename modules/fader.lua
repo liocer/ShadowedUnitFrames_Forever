@@ -1,10 +1,20 @@
+--[[
+	Combat fader. Originally by Shadowed (Shadowed Unit Frames), ported to WoW Forever.
+
+	Forever: health/power can be secret, and a frame's alpha becomes secret once the range
+	module applies a secret in-range result with SetAlphaFromBoolean. Nothing secret is ever
+	compared here: a secret health/power counts as "not full" (the frame fades in), and a
+	secret current alpha is treated as fully visible when a fade starts.
+]]
 local Fader = {}
+local Secrets = ShadowUF.Secrets
+local issecretvalue = Secrets.IsSecret
 local powerDepletes = {[Enum.PowerType.Mana] = true, [Enum.PowerType.Energy] = true, [Enum.PowerType.Focus] = true}
 ShadowUF:RegisterModule(Fader, "fader", ShadowUF.L["Combat fader"])
 
 -- TODO: Remove once Blizzard fixes cooldown wheels not taking parents alpha
 local function tempAuraFader(frame, alpha)
-	if( not frame.auras ) then return end
+	if( not frame.auras or issecretvalue(alpha) ) then return end
 
 	local childAlpha = 0.8 * alpha
 	if( frame.auras.buffs ) then
@@ -39,7 +49,7 @@ local function faderUpdate(self, elapsed)
 		self.parent:SetAlpha(((self.fadeTime - self.timeElapsed) / self.fadeTime) * (self.alphaStart - self.alphaEnd) + self.alphaEnd)
 	end
 
-	tempAuraFader(self.parent, self.parent:GetAlpha())
+	tempAuraFader(self.parent, Secrets.Plain(self.parent:GetAlpha(), 1))
 end
 
 local function startFading(self, type, alpha, speedyFade)
@@ -52,7 +62,7 @@ local function startFading(self, type, alpha, speedyFade)
 	self.fader.fadeType = type
 	self.fader.timeElapsed = 0
 	self.fader.alphaEnd = alpha
-	self.fader.alphaStart = self:GetAlpha()
+	self.fader.alphaStart = Secrets.Plain(self:GetAlpha(), 1)
 	self.fader:Show()
 end
 
@@ -121,9 +131,15 @@ function Fader:PLAYER_REGEN_DISABLED(frame, event)
 end
 
 
+-- Cast GUIDs are only compared when they aren't secret (the player's own normally aren't)
 local activeCastID
 function Fader:CastStart(frame, event, unit, id)
-	if( unit ~= "player" or activeCastID == id ) then return end
+	if( unit ~= "player" ) then return end
+	if( issecretvalue(id) ) then
+		id = true
+	elseif( activeCastID == id ) then
+		return
+	end
 	activeCastID = id
 
 	frame.fader.playerCasting = true
@@ -131,13 +147,26 @@ function Fader:CastStart(frame, event, unit, id)
 end
 
 function Fader:CastStop(frame, event, unit, id)
-	if( unit ~= "player" or activeCastID ~= id ) then return end
+	if( unit ~= "player" or activeCastID == nil ) then return end
+	if( not issecretvalue(id) and activeCastID ~= true and activeCastID ~= id ) then return end
 	activeCastID = nil
 
 	frame.fader.playerCasting = nil
 	self:Update(frame)
 end
 
+
+-- Plain answer to "is this below max?"; secret (or unknown) values count as not full
+local function notFull(cur, max)
+	if( issecretvalue(cur) or issecretvalue(max) or cur == nil or max == nil ) then return true end
+	return cur ~= max
+end
+
+local function powerNotFull(unit)
+	local powerType = UnitPowerType(unit)
+	if( issecretvalue(powerType) or not powerDepletes[powerType] ) then return false end
+	return notFull(UnitPower(unit), UnitPowerMax(unit))
+end
 
 function Fader:Update(frame, event)
 	-- In combat, fade back in
@@ -147,10 +176,10 @@ function Fader:Update(frame, event)
 	elseif( frame.fader.playerCasting ) then
 		startFading(frame, "in", ShadowUF.db.profile.units[frame.unitType].fader.combatAlpha, true)
 	-- Ether mana or energy is not at 100%, fade in
-	elseif( powerDepletes[UnitPowerType(frame.unit)] and UnitPower(frame.unit) ~= UnitPowerMax(frame.unit) ) then
+	elseif( powerNotFull(frame.unit) ) then
 		startFading(frame, "in", ShadowUF.db.profile.units[frame.unitType].fader.combatAlpha)
 	-- Health is not at max, fade in
-	elseif( UnitHealth(frame.unit) ~= UnitHealthMax(frame.unit) ) then
+	elseif( notFull(UnitHealth(frame.unit), UnitHealthMax(frame.unit)) ) then
 		startFading(frame, "in", ShadowUF.db.profile.units[frame.unitType].fader.combatAlpha)
 	-- Targetting somebody, fade in
 	elseif( frame.unitType == "player" and UnitExists("target") ) then

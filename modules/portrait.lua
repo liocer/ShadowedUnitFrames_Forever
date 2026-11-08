@@ -1,3 +1,5 @@
+-- Portraits. Originally by Shadowed (Shadowed Unit Frames), ported to WoW Forever.
+-- Forever: UnitGUID can be secret; Units.ReadGUID gives nil then, and the model is always refreshed.
 local Portrait = {}
 ShadowUF:RegisterModule(Portrait, "portrait", ShadowUF.L["Portrait"])
 
@@ -48,7 +50,14 @@ end
 function Portrait:UpdateFunc(frame)
 	-- Portrait models can't be updated unless the GUID changed or else you have the animation jumping around
 	if( ShadowUF.db.profile.units[frame.unitType].portrait.type == "3D" ) then
-		local guid = UnitGUID(frame.unitOwner)
+		-- nil when the GUID is secret, in which case the model is always refreshed
+		local guid = ShadowUF.Units.ReadGUID(frame.unitOwner)
+		if( guid == nil ) then
+			frame.portrait.guid = nil
+			self:Update(frame)
+			return
+		end
+
 		if( frame.portrait.guid ~= guid ) then
 			self:Update(frame)
 		end
@@ -65,9 +74,14 @@ function Portrait:Update(frame, event)
 	if( type == "class" ) then
 		local classToken = frame:UnitClassToken()
 		if( classToken ) then
-			local classIconAtlas = GetClassAtlas(classToken)
-			if( classIconAtlas ) then
+			local classIconAtlas = GetClassAtlas and GetClassAtlas(classToken)
+			local coords = CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classToken]
+			if( classIconAtlas and C_Texture.GetAtlasInfo(classIconAtlas) ) then
 				frame.portrait:SetAtlas(classIconAtlas)
+			-- Older class icon sheet, in case this build lacks the atlas
+			elseif( coords ) then
+				frame.portrait:SetTexture("Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes")
+				frame.portrait:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
 			else
 				frame.portrait:SetTexture("")
 			end

@@ -1,5 +1,11 @@
+-- XP / reputation bar. Originally by Shadowed. SUF Forever: player XP + rested, hunter pet XP
+-- (GetPetExperience: an old C function not in the API docs, so it's looked up defensively)
+-- and the watched reputation. None of these are secret, but they're read through
+-- ShadowUF.Secrets anyway so a secret value just hides the bar instead of erroring.
 local XP = {}
 local L = ShadowUF.L
+local Secrets = ShadowUF.Secrets
+local GetPetExperience = _G["GetPetExperience"]
 ShadowUF:RegisterModule(XP, "xpBar", L["XP/Rep bar"], true)
 
 local function OnEnter(self)
@@ -86,7 +92,7 @@ end
 
 function XP:UpdateRep(frame)
 	if( not frame.xpBar.rep ) then return end
-	local factionData = C_Reputation.GetWatchedFactionData()
+	local factionData = C_Reputation and C_Reputation.GetWatchedFactionData and C_Reputation.GetWatchedFactionData()
 	if( not factionData ) then
 		frame.xpBar.rep:Hide()
 		return
@@ -97,7 +103,7 @@ function XP:UpdateRep(frame)
 	current = math.abs(min - current)
 	max = math.abs(min - max)
 
-	local color = FACTION_BAR_COLORS[factionData.reaction]
+	local color = FACTION_BAR_COLORS[factionData.reaction] or FACTION_BAR_COLORS[4]
 	frame.xpBar.rep:SetMinMaxValues(0, max)
 	frame.xpBar.rep:SetValue(current)
 	frame.xpBar.rep.tooltip = string.format(L["%s (%s): %s/%s (%.2f%% done)"], factionData.name, GetText("FACTION_STANDING_LABEL" .. tostring(factionData.reaction), UnitSex("player")), formatNumber(current), formatNumber(max), (max > 0 and current / max or 0) * 100)
@@ -108,16 +114,24 @@ end
 
 function XP:UpdateXP(frame)
 	-- At the level cap or XP is disabled, or the pet is actually a vehicle right now, swap to reputation bar (or hide it)
-	if( UnitLevel(frame.unitOwner) == GetMaxLevelForPlayerExpansion() or IsXPUserDisabled() or ( frame.unitOwner == "pet" and UnitExists("vehicle") ) ) then
+	local level = Secrets.Plain(UnitLevel(frame.unitOwner))
+	local maxLevel = GetMaxLevelForPlayerExpansion and Secrets.Read(GetMaxLevelForPlayerExpansion) or 60
+	if( not level or level >= maxLevel or ( IsXPUserDisabled and IsXPUserDisabled() ) or ( frame.unitOwner == "pet" and UnitExists("vehicle") ) ) then
 		frame.xpBar.xp:Hide()
 		return
 	end
 
 	local current, max
 	if( frame.unitOwner == "player" ) then
-		current, max = UnitXP(frame.unitOwner), UnitXPMax(frame.unitOwner)
-	else
-		current, max = GetPetExperience()
+		current, max = Secrets.Plain(UnitXP(frame.unitOwner)), Secrets.Plain(UnitXPMax(frame.unitOwner))
+	elseif( GetPetExperience ) then
+		current, max = Secrets.ReadAll(GetPetExperience)
+	end
+
+	-- No pet XP (not a hunter pet) or nothing readable
+	if( not current or not max or max <= 0 ) then
+		frame.xpBar.xp:Hide()
+		return
 	end
 
 	local min = math.min(0, current)
@@ -125,14 +139,15 @@ function XP:UpdateXP(frame)
 	frame.xpBar.xp:SetValue(current)
 	frame.xpBar.xp:Show()
 
-	if( frame.unitOwner == "player" and GetXPExhaustion() ) then
+	local rested = frame.unitOwner == "player" and Secrets.Read(GetXPExhaustion)
+	if( rested and rested > 0 ) then
 		frame.xpBar.rested:SetMinMaxValues(min, max)
-		frame.xpBar.rested:SetValue(math.min(current + GetXPExhaustion(), max))
+		frame.xpBar.rested:SetValue(math.min(current + rested, max))
 		frame.xpBar.rested:Show()
-		frame.xpBar.xp.tooltip = string.format(L["Level %s - %s: %s/%s (%.2f%% done), %s rested."], UnitLevel(frame.unitOwner), UnitLevel(frame.unitOwner) + 1, formatNumber(current), formatNumber(max), (max > 0 and current / max or 0) * 100, formatNumber(GetXPExhaustion()))
+		frame.xpBar.xp.tooltip = string.format(L["Level %s - %s: %s/%s (%.2f%% done), %s rested."], level, level + 1, formatNumber(current), formatNumber(max), (max > 0 and current / max or 0) * 100, formatNumber(rested))
 	else
 		frame.xpBar.rested:Hide()
-		frame.xpBar.xp.tooltip = string.format(L["Level %s - %s: %s/%s (%.2f%% done)"], UnitLevel(frame.unitOwner), UnitLevel(frame.unitOwner) + 1, formatNumber(current), formatNumber(max), (max > 0 and current / max or 0) * 100)
+		frame.xpBar.xp.tooltip = string.format(L["Level %s - %s: %s/%s (%.2f%% done)"], level, level + 1, formatNumber(current), formatNumber(max), (max > 0 and current / max or 0) * 100)
 	end
 end
 

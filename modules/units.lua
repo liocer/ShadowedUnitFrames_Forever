@@ -1,3 +1,11 @@
+--[[
+	Unit frame creation and management for Shadowed Unit Frames.
+	Original by Shadowed, maintained by Hendrik Leppkes (Nevcairiel).
+
+	Forever port: anything that can be secret (UnitGUID, UnitClass, UnitHealthMax, ...) is checked
+	with issecretvalue before it's compared, tested or used as a table key. When the game won't
+	tell us whether a unit changed we just do a full update.
+]]
 local Units = {headerFrames = {}, unitFrames = {}, frameList = {}, unitEvents = {}, remappedUnits = {}, canCure = {}}
 Units.childUnits = {["partytarget"] = "party", ["partytargettarget"] = "party", ["partypet"] = "party", ["maintanktarget"] = "maintank", ["mainassisttarget"] = "mainassist", ["bosstarget"] = "boss", ["arenatarget"] = "arena", ["arenatargettarget"] = "arena", ["arenapet"] = "arena", ["battlegroundpet"] = "battleground", ["battlegroundtarget"] = "battleground", ["battlegroundtargettarget"] = "battleground", ["maintanktargettarget"] = "maintank", ["mainassisttargettarget"] = "mainassist", ["bosstargettarget"] = "boss"}
 Units.zoneUnits = {["arena"] = "arena", ["arenapet"] = "arena", ["arenatarget"] = "arena", ["arenatargettarget"] = "arena", ["boss"] = {"party", "raid"}, ["bosstarget"] = {"party", "raid"}, ["battleground"] = "pvp", ["battlegroundtarget"] = "pvp", ["battlegroundtargettarget"] = "pvp", ["battlegroundpet"] = "pvp", ["bosstargettarget"] = {"party", "raid"}}
@@ -10,12 +18,32 @@ local playerClass = select(2, UnitClass("player"))
 local unitFrames, headerFrames, frameList, unitEvents, childUnits, headerUnits, queuedCombat, zoneUnits = Units.unitFrames, Units.headerFrames, Units.frameList, Units.unitEvents, Units.childUnits, Units.headerUnits, {}, Units.zoneUnits
 local remappedUnits = Units.remappedUnits
 local _G = getfenv(0)
+local issecretvalue = issecretvalue or function() return false end
+-- Our namespace, kept even if the global ShadowUF is handed back to the original addon on a conflict
+local core = ShadowUF
+
+-- GUID of the unit, or nil plus true if the game is hiding who it is
+local function readGUID(unit)
+	if( not unit ) then return nil, false end
+	local guid = UnitGUID(unit)
+	if( issecretvalue(guid) ) then return nil, true end
+	return guid, false
+end
+Units.ReadGUID = readGUID
+
+-- True if the unit has health data yet (a secret max health means it does, the game just won't say how much)
+local function hasHealthData(unit)
+	local max = UnitHealthMax(unit)
+	if( issecretvalue(max) ) then return true end
+	return max and max > 0
+end
 
 ShadowUF.Units = Units
 ShadowUF:RegisterModule(Units, "units")
 
 -- This is the wrapper frame that everything parents to so we can just hide it when we need to deal with pet battles
-local petBattleFrame = CreateFrame("Frame", "SUFWrapperFrame", UIParent, "SecureHandlerBaseTemplate")
+-- (unnamed when the original SUF is loaded too, so we don't take over its global frame name)
+local petBattleFrame = CreateFrame("Frame", not core.conflict and "SUFWrapperFrame" or nil, UIParent, "SecureHandlerBaseTemplate")
 petBattleFrame:SetFrameStrata("BACKGROUND")
 petBattleFrame:SetAllPoints(UIParent)
 petBattleFrame:WrapScript(petBattleFrame, "OnAttributeChanged", [[
@@ -245,10 +273,9 @@ end
 -- Deal with enabling modules inside a zone
 local function SetVisibility(self)
 	local layoutUpdate
-	local instanceType = select(2, IsInInstance()) or "none"
-	local playerSpec = GetSpecialization()
-	if( instanceType == "scenario" ) then instanceType = "party" end
-	if( instanceType == "interior" ) then instanceType = "neighborhood" end
+	local instanceType = ShadowUF:GetInstanceType(true)
+	-- Forever has no specializations; a module that's limited to a spec is never enabled
+	local playerSpec = nil
 
 	-- Selectively disable modules
 	for _, module in pairs(ShadowUF.moduleOrder) do
@@ -328,12 +355,12 @@ local function checkVehicleData(self, elapsed)
 			self:FullUpdate()
 
 		-- Got data, stop checking and do a full frame update
-		elseif( UnitIsConnected(self.unit) or UnitHealthMax(self.unit) > 0 ) then
+		elseif( UnitIsConnected(self.unit) or hasHealthData(self.unit) ) then
 			self.timeElapsed = nil
 			self.dataAttempts = nil
 			self:SetScript("OnUpdate", nil)
 
-			self.unitGUID = UnitGUID(self.unit)
+			self.unitGUID = readGUID(self.unit)
 			self:FullUpdate()
 		end
 	end
@@ -344,16 +371,24 @@ function Units:CheckVehicleStatus(frame, event, unit)
 	if( event and frame.unitOwner ~= unit ) then return end
 
 	-- Not in a vehicle yet, and they entered one that has a UI or they were in a vehicle but the GUID changed (vehicle -> vehicle)
-	if( ( not frame.inVehicle or frame.unitGUID ~= UnitGUID(frame.vehicleUnit) ) and UnitHasVehicleUI(frame.unitOwner) and UnitHasVehiclePlayerFrameUI(frame.unitOwner) and not ShadowUF.db.profile.units[frame.unitType].disableVehicle ) then
+	-- If the vehicle's GUID is secret we can't tell, and assume it didn't change: this also runs from inside
+	-- FullUpdate, so treating "unknown" as "changed" would update forever.
+	local vehicleChanged = not frame.inVehicle
+	if( not vehicleChanged and frame.vehicleUnit ) then
+		local vehicleGUID, secret = readGUID(frame.vehicleUnit)
+		vehicleChanged = not secret and frame.unitGUID ~= vehicleGUID
+	end
+
+	if( vehicleChanged and frame.vehicleUnit and UnitHasVehicleUI(frame.unitOwner) and UnitHasVehiclePlayerFrameUI(frame.unitOwner) and not ShadowUF.db.profile.units[frame.unitType].disableVehicle ) then
 		frame.inVehicle = true
 		frame.unit = frame.vehicleUnit
 
-		if( not UnitIsConnected(frame.unit) or UnitHealthMax(frame.unit) == 0 ) then
+		if( not UnitIsConnected(frame.unit) or not hasHealthData(frame.unit) ) then
 			frame.timeElapsed = 0
 			frame.dataAttempts = 0
 			frame:SetScript("OnUpdate", checkVehicleData)
 		else
-			frame.unitGUID = UnitGUID(frame.unit)
+			frame.unitGUID = readGUID(frame.unit)
 			frame:FullUpdate()
 		end
 
@@ -361,14 +396,23 @@ function Units:CheckVehicleStatus(frame, event, unit)
 	elseif( frame.inVehicle and ( not UnitHasVehicleUI(frame.unitOwner) or not UnitHasVehiclePlayerFrameUI(frame.unitOwner) or ShadowUF.db.profile.units[frame.unitType].disableVehicle ) ) then
 		frame.inVehicle = false
 		frame.unit = frame.unitOwner
-		frame.unitGUID = UnitGUID(frame.unit)
+		frame.unitGUID = readGUID(frame.unit)
 		frame:FullUpdate()
 	end
 end
 
 -- Handles checking for GUID changes for doing a full update, this fixes frames sometimes showing the wrong unit when they change
+-- frame.unitGUID is only ever a plain GUID or nil; when the GUID is secret we can't tell if the unit changed, so update.
 function Units:CheckUnitStatus(frame)
-	local guid = frame.unit and UnitGUID(frame.unit)
+	local guid, secret = readGUID(frame.unit)
+	if( secret ) then
+		frame.unitGUID = nil
+		if( UnitExists(frame.unit) ) then
+			frame:FullUpdate()
+		end
+		return
+	end
+
 	if( guid ~= frame.unitGUID ) then
 		frame.unitGUID = guid
 
@@ -382,7 +426,7 @@ end
 -- The argument from UNIT_PET is the pets owner, so the player summoning a new pet gets "player", party1 summoning a new pet gets "party1" and so on
 function Units:CheckPetUnitUpdated(frame, event, unit)
 	if( unit == frame.unitRealOwner and UnitExists(frame.unit) ) then
-		frame.unitGUID = UnitGUID(frame.unit)
+		frame.unitGUID = readGUID(frame.unit)
 		frame:FullUpdate()
 	end
 end
@@ -394,10 +438,10 @@ function Units:CheckGroupedUnitStatus(frame)
 	if( frame.inVehicle and not UnitExists(frame.unit) and UnitExists(frame.unitOwner) ) then
 		frame.inVehicle = false
 		frame.unit = frame.unitOwner
-		frame.unitGUID = UnitGUID(frame.unit)
+		frame.unitGUID = readGUID(frame.unit)
 		frame:FullUpdate()
 	else
-		frame.unitGUID = UnitGUID(frame.unit)
+		frame.unitGUID = readGUID(frame.unit)
 		frame:FullUpdate()
 	end
 end
@@ -683,14 +727,13 @@ local function SUF_OnLeave(self)
 end
 
 -- Create the generic things that we want in every secure frame regardless if it's a button or a header
+-- Class token of the unit, nil when unknown or secret, so it's always safe to use as a table key
 local function ClassToken(self)
-	return (select(2, UnitClass(self.unit)))
+	local class = select(2, UnitClass(self.unit))
+	if( issecretvalue(class) ) then return nil end
+	return class
 end
-
-local function ArenaClassToken(self)
-	local specID = GetArenaOpponentSpec(self.unitID)
-	return specID and select(6, GetSpecializationInfoByID(specID))
-end
+Units.ClassToken = ClassToken
 
 function Units:CreateUnit(...)
 	local frame = select("#", ...) > 1 and CreateFrame(...) or select(1, ...)
@@ -890,7 +933,7 @@ function Units:SetHeaderAttributes(frame, type)
 		frame:SetAttribute("roleFilter", config.roleFilter)
 
 		if( config.groupBy == "CLASS" ) then
-			frame:SetAttribute("groupingOrder", "DEATHKNIGHT,DEMONHUNTER,DRUID,HUNTER,MAGE,PALADIN,PRIEST,ROGUE,SHAMAN,WARLOCK,WARRIOR,MONK,EVOKER")
+			frame:SetAttribute("groupingOrder", "DRUID,HUNTER,MAGE,PALADIN,PRIEST,ROGUE,SHAMAN,WARLOCK,WARRIOR")
 			frame:SetAttribute("groupBy", "CLASS")
 		elseif( config.groupBy == "ASSIGNEDROLE" ) then
 			frame:SetAttribute("groupingOrder", "TANK,HEALER,DAMAGER,NONE")
@@ -1197,8 +1240,8 @@ function Units:LoadZoneHeader(type)
 		frame:SetAttribute("unitID", id)
 		frame:Hide()
 
-		-- Override with our arena specific concerns
-		frame.UnitClassToken = ArenaClassToken
+		-- Override with our arena specific concerns (retail looked the class up from the arena opponent's
+		-- spec; that's always secret now and there are no specs on Forever, so the normal UnitClass lookup is used)
 		frame:SetScript("OnShow", OnShowForced)
 
 		headerFrame.children[id] = frame
@@ -1439,8 +1482,10 @@ end
 function Units:InitializeArena()
 	if( not headerFrames.arena or InCombatLockdown() ) then return end
 
-	local specs = GetNumArenaOpponentSpecs()
-	if( not specs or specs == 0 ) then return end
+	-- GetNumArenaOpponentSpecs is retail's arena prep API; it may not exist (or be secret) on Forever
+	local getSpecs = _G["GetNumArenaOpponentSpecs"]
+	local specs = getSpecs and getSpecs()
+	if( not specs or issecretvalue(specs) or specs == 0 ) then return end
 
 	for i=1, specs do
 		local frame = headerFrames.arena.children[i]
@@ -1458,10 +1503,7 @@ function Units:CheckPlayerZone(force)
 		return
 	end
 
-	-- CanHearthAndResurrectFromArea() returns true for world pvp areas, according to BattlefieldFrame.lua
-	local instance = CanHearthAndResurrectFromArea() and "pvp" or select(2, IsInInstance()) or "none"
-	if( instance == "scenario" ) then instance = "party" end
-	if( instance == "interior" ) then instance = "neighborhood" end
+	local instance = ShadowUF:GetInstanceType()
 
 	if( instance == instanceType and not force ) then return end
 	instanceType = instance
@@ -1484,31 +1526,84 @@ function Units:CheckPlayerZone(force)
 end
 
 -- Handle figuring out what auras players can cure
+-- Classic-era dispels; every rank's spell ID is listed since a rank's ID is only "known" once trained.
+-- pet = true means it's a pet spell (the warlock's Felhunter), checked in the pet spell book.
 local curableSpells = {
-	["DRUID"] = {[88423] = {"Magic", "Curse", "Poison"}, [2782] = {"Curse", "Poison"}},
-	["PRIEST"] = {[527] = {"Magic", "Disease"}, [32375] = {"Magic"}, [213634] = {"Disease"}},
-	["PALADIN"] = {[4987] = {"Poison", "Disease", "Magic"}, [213644] = {"Poison", "Disease"}},
-	["SHAMAN"] = {[77130] = {"Curse", "Magic"}, [51886] = {"Curse"}, [383013] = {"Poison"}},
-	["MONK"] = {[115450] = {"Poison", "Disease", "Magic"}, [218164] = {"Poison", "Disease"}},
-	["MAGE"] = {[475] = {"Curse"}},
-	["WARLOCK"] = {[89808] = {"Magic"}},
-	["EVOKER"] = {[365585] = {"Poison"}, [360823] = {"Magic", "Poison"}, [374251] = {"Poison", "Curse", "Disease"}}
+	["DRUID"] = {
+		[2782] = {"Curse"}, -- Remove Curse
+		[8946] = {"Poison"}, -- Cure Poison
+		[2893] = {"Poison"}, -- Abolish Poison
+	},
+	["PRIEST"] = {
+		[527] = {"Magic"}, [988] = {"Magic"}, -- Dispel Magic
+		[528] = {"Disease"}, -- Cure Disease
+		[552] = {"Disease"}, -- Abolish Disease
+	},
+	["PALADIN"] = {
+		[1152] = {"Poison", "Disease"}, -- Purify
+		[4987] = {"Poison", "Disease", "Magic"}, -- Cleanse
+	},
+	["SHAMAN"] = {
+		[526] = {"Poison"}, -- Cure Poison
+		[2870] = {"Disease"}, -- Cure Disease
+	},
+	["MAGE"] = {
+		[475] = {"Curse"}, -- Remove Lesser Curse
+	},
+	["WARLOCK"] = {
+		[19505] = {"Magic", pet = true}, [19731] = {"Magic", pet = true}, [19734] = {"Magic", pet = true}, [19736] = {"Magic", pet = true}, -- Devour Magic
+	},
 }
 
 curableSpells = curableSpells[playerClass]
 
+local playerBank = Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player
+local petBank = Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Pet
+local IsPlayerSpell = _G["IsPlayerSpell"]
+
+local function isSpellKnown(spellID, isPet)
+	if( C_SpellBook and C_SpellBook.IsSpellKnown ) then
+		local bank = isPet and petBank or playerBank
+		if( bank ) then
+			local ok, known = pcall(C_SpellBook.IsSpellKnown, spellID, bank)
+			if( ok and known and not issecretvalue(known) ) then return true end
+
+			if( C_SpellBook.IsSpellInSpellBook ) then
+				ok, known = pcall(C_SpellBook.IsSpellInSpellBook, spellID, bank, true)
+				if( ok and known and not issecretvalue(known) ) then return true end
+			end
+		end
+	end
+
+	-- Old API, in case a build still has it
+	if( not isPet and IsPlayerSpell ) then
+		local ok, known = pcall(IsPlayerSpell, spellID)
+		if( ok and known and not issecretvalue(known) ) then return true end
+	end
+
+	return false
+end
+
 local function checkCurableSpells()
 	if( not curableSpells ) then return end
 
+	-- Wipe, don't replace: other modules keep a reference to this table
 	table.wipe(Units.canCure)
 
 	for spellID, cures in pairs(curableSpells) do
-		if( IsPlayerSpell(spellID) or IsSpellKnown(spellID, true) ) then
-			for _, auraType in pairs(cures) do
+		if( isSpellKnown(spellID, cures.pet) ) then
+			for _, auraType in ipairs(cures) do
 				Units.canCure[auraType] = true
 			end
 		end
 	end
+end
+Units.CheckCurableSpells = checkCurableSpells
+
+-- Can the player remove this debuff type? Safe to call with a secret (or nil) dispel type, which gives nil.
+function Units:CanCure(auraType)
+	if( issecretvalue(auraType) or auraType == nil ) then return nil end
+	return self.canCure[auraType]
 end
 
 local centralFrame = CreateFrame("Frame")
@@ -1517,9 +1612,16 @@ centralFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 centralFrame:RegisterEvent("PLAYER_LOGIN")
 centralFrame:RegisterEvent("PLAYER_LEVEL_UP")
 centralFrame:RegisterEvent("CINEMATIC_STOP")
-centralFrame:RegisterEvent("ARENA_PREP_OPPONENT_SPECIALIZATIONS")
-centralFrame:RegisterEvent("ARENA_OPPONENT_UPDATE")
+-- Arena prep events are retail's; there are no arenas in Forever's content but the events are documented, pcall in case
+pcall(centralFrame.RegisterEvent, centralFrame, "ARENA_PREP_OPPONENT_SPECIALIZATIONS")
+pcall(centralFrame.RegisterEvent, centralFrame, "ARENA_OPPONENT_UPDATE")
 centralFrame:SetScript("OnEvent", function(self, event, unit)
+	-- Dormant when the original SUF is loaded too (see ShadowedUnitFrames.lua)
+	if( core.conflict ) then
+		self:UnregisterAllEvents()
+		return
+	end
+
 	-- Check if the player changed zone types and we need to change module status, while they are dead
 	-- we won't change their zone type as releasing from an instance will change the zone type without them
 	-- really having left the zone
@@ -1546,8 +1648,8 @@ centralFrame:SetScript("OnEvent", function(self, event, unit)
 			unitFrames.player:FullUpdate()
 		end
 
-	-- Monitor talent changes for curable changes
-	elseif( event == "PLAYER_SPECIALIZATION_CHANGED" or event == "UNIT_PET" or event == "SPELLS_CHANGED") then
+	-- Monitor spell/talent/pet changes for curable changes
+	elseif( event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_SKILL_LINE" or event == "ACTIVE_TALENT_GROUP_CHANGED" or event == "UNIT_PET" ) then
 		checkCurableSpells()
 
 		for frame in pairs(ShadowUF.Units.frameList) do
@@ -1562,8 +1664,10 @@ centralFrame:SetScript("OnEvent", function(self, event, unit)
 
 	elseif( event == "PLAYER_LOGIN" ) then
 		checkCurableSpells()
-		self:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 		self:RegisterEvent("SPELLS_CHANGED")
+		-- Retail's LEARNED_SPELL_IN_TAB is LEARNED_SPELL_IN_SKILL_LINE on this client; pcall in case a build lacks either
+		pcall(self.RegisterEvent, self, "LEARNED_SPELL_IN_SKILL_LINE")
+		pcall(self.RegisterEvent, self, "ACTIVE_TALENT_GROUP_CHANGED")
 		if( playerClass == "WARLOCK" ) then
 			self:RegisterUnitEvent("UNIT_PET", "player", nil)
 		end

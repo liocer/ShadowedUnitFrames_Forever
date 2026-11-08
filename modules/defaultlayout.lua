@@ -134,10 +134,7 @@ function ShadowUF:LoadDefaultLayout(useMerge)
 		DRUID = {r = 1.0, g = 0.49, b = 0.04},
 		SHAMAN = {r = 0.14, g = 0.35, b = 1.0},
 		WARRIOR = {r = 0.78, g = 0.61, b = 0.43},
-		DEATHKNIGHT = {r = 0.77, g = 0.12 , b = 0.23},
-		MONK = {r = 0.0, g = 1.00 , b = 0.59},
-		DEMONHUNTER = {r = 0.64, g = 0.19, b = 0.79},
-		EVOKER = {r = 0.20, g = 0.58, b = 0.50},
+		-- Forever: no death knights, monks, demon hunters or evokers
 		PET = {r = 0.20, g = 0.90, b = 0.20},
 		VEHICLE = {r = 0.23, g = 0.41, b = 0.23},
 	}
@@ -146,29 +143,13 @@ function ShadowUF:LoadDefaultLayout(useMerge)
 		RAGE = {r = 0.90, g = 0.20, b = 0.30},
 		FOCUS = {r = 1.0, g = 0.50, b = 0.25},
 		ENERGY = {r = 1.0, g = 0.85, b = 0.10},
-		RUNES = {r = 0.50, g = 0.50, b = 0.50},
-		RUNIC_POWER = {b = 0.60, g = 0.45, r = 0.35},
 		AMMOSLOT = {r = 0.85, g = 0.60, b = 0.55},
 		FUEL = {r = 0.85, g = 0.47, b = 0.36},
 		COMBOPOINTS = {r = 1.0, g = 0.80, b = 0.0},
-		INSANITY = {r = 0.40, g = 0, b = 0.80},
-		MAELSTROM = {r = 0.00, g = 0.50, b = 1.00},
-		LUNAR_POWER = {r = 0.30, g = 0.52, b = 0.90},
-		HOLYPOWER = {r = 0.95, g = 0.90, b = 0.60},
-		SOULSHARDS = {r = 0.58, g = 0.51, b = 0.79},
-		ARCANECHARGES = {r = 0.1, g = 0.1, b = 0.98},
 		ALTERNATE = {r = 0.815, g = 0.941, b = 1},
-		CHI = {r = 0.71, g = 1.0, b = 0.92},
-		FURY = {r = 0.788, g = 0.259, b = 0.992},
-		PAIN = {r = 1, g = 0, b = 0},
-		STATUE = {r = 0.35, g = 0.45, b = 0.60},
-		RUNEOFPOWER = {r = 0.35, g = 0.45, b = 0.60},
-		MUSHROOMS = {r = 0.20, g = 0.90, b = 0.20},
 		AURAPOINTS = {r = 1.0, g = 0.80, b = 0.0},
-		STAGGER_GREEN = {r = 0.52, g = 1.0, b = 0.52},
-		STAGGER_YELLOW = {r = 1.0, g = 0.98, b = 0.72},
-		STAGGER_RED = {r = 1.0, g = 0.42, b = 0.42},
-		ESSENCE = {r = 0.40, g = 0.80, b = 1.00},
+		-- Forever: runes, runic power, holy power, soul shards, chi, arcane charges, essence, stagger, insanity,
+		-- maelstrom, astral power, fury, pain and the retail totem bar colours (statue, rune of power, mushrooms) are gone
 	}
 	config.healthColors = {
 		tapped = {r = 0.5, g = 0.5, b = 0.5},
@@ -344,19 +325,11 @@ function ShadowUF:LoadDefaultLayout(useMerge)
 			castBar = {order = 60},
 			xpBar = {order = 55},
 			fader = {enabled = false, combatAlpha = 1.0, inactiveAlpha = 0.6},
-			runeBar = {enabled = true, background = false, height = 0.40, order = 70},
+			-- Forever: shaman totems, druid mana while shapeshifted and combo points are the only class bars
 			totemBar = {enabled = true, background = false, height = 0.40, order = 70},
 			druidBar = {enabled = true, background = true, height = 0.40, order = 70},
-			priestBar = {enabled = true, background = true, height = 0.40, order = 70},
-			shamanBar = {enabled = true, background = true, height = 0.40, order = 70},
 			comboPoints = {enabled = true, anchorTo = "$parent", order = 60, anchorPoint = "BR", x = -3, y = 8, size = 14, spacing = -4, growth = "LEFT", isBar = true, height = 0.40},
 			auraPoints = {enabled = false, showAlways = true, anchorTo = "$parent", order = 60, anchorPoint = "BR", x = -3, y = 8, size = 14, spacing = -4, growth = "LEFT", isBar = true, height = 0.40},
-			staggerBar = {enabled = true, background = true, height = 0.30, order = 70},
-			soulShards = {anchorTo = "$parent", order = 60, height = 0.40, anchorPoint = "BR", x = -8, y = 6, size = 12, spacing = -2, growth = "LEFT", isBar = true, showAlways = true},
-			holyPower = {anchorTo = "$parent", order = 60, height = 0.40, anchorPoint = "BR", x = -3, y = 6, size = 14, spacing = -4, growth = "LEFT", isBar = true, showAlways = true},
-			chi = {anchorTo = "$parent", order = 60, height = 0.40, anchorPoint = "BR", x = -3, y = 6, size = 14, spacing = -4, growth = "LEFT", isBar = true, showAlways = true},
-			arcaneCharges = {anchorTo = "$parent", order = 60, height = 0.40, anchorPoint = "BR", x = -8, y = 6, size = 12, spacing = -2, growth = "LEFT", isBar = true, showAlways = true},
-			essence = {anchorTo = "$parent", order = 60, height = 0.40, anchorPoint = "BR", x = -8, y = 6, size = 12, spacing = -2, growth = "LEFT", isBar = true, showAlways = true},
 			incHeal = {cap = 1},
 			incAbsorb = {cap = 1},
 			healAbsorb = {cap = 1},
@@ -376,8 +349,6 @@ function ShadowUF:LoadDefaultLayout(useMerge)
 				{text = "[(()afk() )][name][( ()group())]"},
 				{text = ""},
 				{enabled = true, width = 1, name = L["Timer Text"], text = "[totem:timer]", anchorTo = "$totemBar", anchorPoint = "C", x = 0, y = 0, size = 0, default = true, block = true},
-				{enabled = true, width = 1, name = L["Timer Text"], text = "[rune:timer]", anchorTo = "$runeBar", anchorPoint = "C", size = 0, x = 0, y = 0, default = true, block = true},
-				{enabled = true, width = 1, name = L["Text"], text = "[monk:abs:stagger]", anchorTo = "$staggerBar", anchorPoint = "C", size = 0, x = 0, y = 0, default = true}
 			},
 		},
 		party = {
@@ -483,7 +454,6 @@ function ShadowUF:LoadDefaultLayout(useMerge)
 			},
 			indicators = {
 				pvp = {anchorTo = "$parent", anchorPoint = "BL", size = 22, x = 0, y = 11},
-				arenaSpec = {anchorTo = "$parent", anchorPoint = "LC", size = 28, x = 0, y = 0}
 			},
 			text = {
 				{text = "[name]"},
@@ -853,6 +823,9 @@ function ShadowUF:LoadDefaultLayout(useMerge)
 			healthBar = {reactionType = "none"},
 			portrait = {enabled = false, fullAfter = 50},
 			castBar = {order = 60},
+			indicators = {
+				happiness = {enabled = true, anchorPoint = "RC", size = 20, x = 0, y = 0, anchorTo = "$parent"},
+			},
 			text = {
 				{text = "[name]"},
 				{text = "[curmaxhp]"},

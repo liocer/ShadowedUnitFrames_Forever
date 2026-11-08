@@ -1,26 +1,53 @@
-local Indicators = {list = {"status", "pvp", "leader", "resurrect", "sumPending", "masterLoot", "raidTarget", "ready", "role", "lfdRole", "class", "phase", "questBoss", "petBattle", "arenaSpec"}}
+--[[
+	Indicators. Originally by Shadowed (Shadowed Unit Frames), ported to WoW Forever.
+
+	Forever: no specs, arenas or pet battles, so the arena spec and pet battle indicators are gone;
+	hunter pet happiness is back (from SUF's classic branch). Identity values (leader, assistant,
+	PvP flag, roles, raid target, UnitIsUnit, phase) can be secret: secret booleans are shown with
+	SetAlphaFromBoolean, secret raid target indexes go straight to SetSpriteSheetCell, anything
+	else secret is treated as "no".
+]]
+local Indicators = {list = {"status", "pvp", "leader", "resurrect", "sumPending", "masterLoot", "raidTarget", "ready", "role", "lfdRole", "class", "phase", "questBoss", "happiness"}}
+local Secrets = ShadowUF.Secrets
+local issecretvalue = Secrets.IsSecret
+local Read = Secrets.Read
+
+-- Old C functions this client has that the API docs don't list (Blizzard's own UI calls them)
+local GetReadyCheckStatus = _G.GetReadyCheckStatus
+local GetPartyAssignment = _G.GetPartyAssignment
+local HasLFGRestrictions = _G.HasLFGRestrictions
+local IsEveryoneAssistant = _G.IsEveryoneAssistant
+local UnitHasIncomingResurrection = _G.UnitHasIncomingResurrection
+local HasPetUI = _G.HasPetUI
+local GetPetHappiness = C_PetInfo and C_PetInfo.GetPetHappiness or _G.GetPetHappiness
 
 ShadowUF:RegisterModule(Indicators, "indicators", ShadowUF.L["Indicators"])
 
-function Indicators:UpdateArenaSpec(frame)
-	if( not frame.indicators.arenaSpec or not frame.indicators.arenaSpec.enabled ) then return end
-
-	local specID = GetArenaOpponentSpec(frame.unitID)
-	local specIcon = specID and select(4, GetSpecializationInfoByID(specID))
-	if( specIcon ) then
-		frame.indicators.arenaSpec:SetTexture(specIcon)
-		frame.indicators.arenaSpec:Show()
-	else
-		frame.indicators.arenaSpec:Hide()
+-- Show/hide from a value that may be a secret boolean
+local function setShown(region, value)
+	if( issecretvalue(value) ) then
+		region:Show()
+		if( not pcall(region.SetAlphaFromBoolean, region, value, 1, 0) ) then
+			region:Hide()
+		end
+		return
 	end
+
+	region:SetAlpha(1)
+	region:SetShown(value and true or false)
+end
+
+-- Plain "is this unit that unit", nil (false) when it can't be told
+local function isUnit(unit, otherUnit)
+	return otherUnit and Read(UnitIsUnit, unit, otherUnit) or false
 end
 
 function Indicators:UpdateClass(frame)
 	if( not frame.indicators.class or not frame.indicators.class.enabled ) then return end
 
 	local class = frame:UnitClassToken()
-	if( UnitIsPlayer(frame.unit) and class ) then
-		local coords = CLASS_ICON_TCOORDS[class]
+	local coords = class and CLASS_ICON_TCOORDS[class]
+	if( UnitIsPlayer(frame.unit) and coords ) then
 		frame.indicators.class:SetTexture("Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes")
 		frame.indicators.class:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
 		frame.indicators.class:Show()
@@ -30,68 +57,65 @@ function Indicators:UpdateClass(frame)
 end
 
 function Indicators:UpdatePhase(frame)
-    if( not frame.indicators.phase or not frame.indicators.phase.enabled ) then return end
+	if( not frame.indicators.phase or not frame.indicators.phase.enabled ) then return end
 
-    if( UnitIsConnected(frame.unit) and UnitPhaseReason(frame.unit) ) then
-        frame.indicators.phase:SetTexture("Interface\\TargetingFrame\\UI-PhasingIcon")
-        frame.indicators.phase:SetTexCoord(0.15625, 0.84375, 0.15625, 0.84375)
-        frame.indicators.phase:Show()
-    else
-        frame.indicators.phase:Hide()
-    end
+	if( UnitIsConnected(frame.unit) and UnitPhaseReason and Read(UnitPhaseReason, frame.unit) ) then
+		frame.indicators.phase:SetTexture("Interface\\TargetingFrame\\UI-PhasingIcon")
+		frame.indicators.phase:SetTexCoord(0.15625, 0.84375, 0.15625, 0.84375)
+		frame.indicators.phase:Show()
+	else
+		frame.indicators.phase:Hide()
+	end
 end
 
 function Indicators:UpdateResurrect(frame)
-    if( not frame.indicators.resurrect or not frame.indicators.resurrect.enabled ) then return end
+	if( not frame.indicators.resurrect or not frame.indicators.resurrect.enabled ) then return end
 
-    if( UnitHasIncomingResurrection(frame.unit) ) then
-        frame.indicators.resurrect:Show()
-    else
-        frame.indicators.resurrect:Hide()
-    end
+	if( not UnitHasIncomingResurrection ) then
+		frame.indicators.resurrect:Hide()
+		return
+	end
+
+	local ok, incoming = pcall(UnitHasIncomingResurrection, frame.unit)
+	setShown(frame.indicators.resurrect, ok and incoming)
 end
+
+local SUMMON_COORDS = {
+	[Enum.SummonStatus and Enum.SummonStatus.Pending or 1] = {0.539062, 0.789062, 0.015625, 0.515625},
+	[Enum.SummonStatus and Enum.SummonStatus.Accepted or 2] = {0.0078125, 0.257812, 0.015625, 0.515625},
+	[Enum.SummonStatus and Enum.SummonStatus.Declined or 3] = {0.273438, 0.523438, 0.015625, 0.515625},
+}
 
 function Indicators:SummonPending(frame)
 	if( not frame.indicators.sumPending or not frame.indicators.sumPending.enabled ) then return end
 
-	if( C_IncomingSummon.HasIncomingSummon(frame.unit) ) then
-		if( C_IncomingSummon.IncomingSummonStatus(frame.unit) == 1 ) then
-			frame.indicators.sumPending:SetTexture("Interface\\RaidFrame\\RaidFrameSummon")
-			frame.indicators.sumPending:SetTexCoord(0.539062, 0.789062, 0.015625, 0.515625)
-			frame.indicators.sumPending:Show()
-		elseif( C_IncomingSummon.IncomingSummonStatus(frame.unit) == 2 ) then
-			frame.indicators.sumPending:SetTexture("Interface\\RaidFrame\\RaidFrameSummon")
-			frame.indicators.sumPending:SetTexCoord(0.0078125, 0.257812, 0.015625, 0.515625)
-			frame.indicators.sumPending:Show()
-		elseif( C_IncomingSummon.IncomingSummonStatus(frame.unit) == 3 ) then
-			frame.indicators.sumPending:SetTexture("Interface\\RaidFrame\\RaidFrameSummon")
-			frame.indicators.sumPending:SetTexCoord(0.273438, 0.523438, 0.015625, 0.515625)
-			frame.indicators.sumPending:Show()
-		else
-			frame.indicators.sumPending:Hide()
-		end
+	local coords = Read(C_IncomingSummon.HasIncomingSummon, frame.unit) and SUMMON_COORDS[Read(C_IncomingSummon.IncomingSummonStatus, frame.unit) or 0]
+	if( coords ) then
+		frame.indicators.sumPending:SetTexture("Interface\\RaidFrame\\RaidFrameSummon")
+		frame.indicators.sumPending:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+		frame.indicators.sumPending:Show()
 	else
 		frame.indicators.sumPending:Hide()
 	end
 end
 
-
 function Indicators:UpdateMasterLoot(frame)
 	if( not frame.indicators.masterLoot or not frame.indicators.masterLoot.enabled ) then return end
 
 	local masterLoot, partyID, raidID
-	if C_PartyInfo and C_PartyInfo.GetLootMethod then
+	if( C_PartyInfo and C_PartyInfo.GetLootMethod ) then
 		local lootType
 		lootType, partyID, raidID = C_PartyInfo.GetLootMethod()
 		masterLoot = (lootType == Enum.LootMethod.Masterlooter)
-	else
+	elseif( _G.GetLootMethod ) then
 		local lootType
-		lootType, partyID, raidID = GetLootMethod()
+		lootType, partyID, raidID = _G.GetLootMethod()
 		masterLoot = (lootType == "master")
 	end
+
 	if( not masterLoot ) then
 		frame.indicators.masterLoot:Hide()
-	elseif( ( partyID and partyID == 0 and UnitIsUnit(frame.unit, "player") ) or ( partyID and partyID > 0 and UnitIsUnit(frame.unit, ShadowUF.partyUnits[partyID]) ) or ( raidID and raidID > 0 and UnitIsUnit(frame.unit, ShadowUF.raidUnits[raidID]) ) ) then
+	elseif( ( partyID and partyID == 0 and isUnit(frame.unit, "player") ) or ( partyID and partyID > 0 and isUnit(frame.unit, ShadowUF.partyUnits[partyID]) ) or ( raidID and raidID > 0 and isUnit(frame.unit, ShadowUF.raidUnits[raidID]) ) ) then
 		frame.indicators.masterLoot:Show()
 	else
 		frame.indicators.masterLoot:Hide()
@@ -101,9 +125,14 @@ end
 function Indicators:UpdateRaidTarget(frame)
 	if( not frame.indicators.raidTarget or not frame.indicators.raidTarget.enabled ) then return end
 
-	if( UnitExists(frame.unit) and GetRaidTargetIndex(frame.unit) ) then
-		SetRaidTargetIconTexture(frame.indicators.raidTarget, GetRaidTargetIndex(frame.unit))
-		frame.indicators.raidTarget:Show()
+	local index = UnitExists(frame.unit) and GetRaidTargetIndex(frame.unit)
+	-- A secret index can go straight to SetSpriteSheetCell, which is what SetRaidTargetIconTexture uses
+	if( issecretvalue(index) or index ) then
+		if( pcall(SetRaidTargetIconTexture, frame.indicators.raidTarget, index) ) then
+			frame.indicators.raidTarget:Show()
+		else
+			frame.indicators.raidTarget:Hide()
+		end
 	else
 		frame.indicators.raidTarget:Hide()
 	end
@@ -112,24 +141,14 @@ end
 function Indicators:UpdateQuestBoss(frame)
 	if( not frame.indicators.questBoss or not frame.indicators.questBoss.enabled ) then return end
 
-	if( UnitIsQuestBoss(frame.unit) ) then
-		frame.indicators.questBoss:Show()
-	else
-		frame.indicators.questBoss:Hide()
-	end
+	setShown(frame.indicators.questBoss, UnitIsQuestBoss(frame.unit))
 end
 
+-- Role picked in the group finder; Forever has no specs so arena opponents don't get one
 function Indicators:UpdateLFDRole(frame, event)
 	if( not frame.indicators.lfdRole or not frame.indicators.lfdRole.enabled ) then return end
 
-	local role
-	if( frame.unitType ~= "arena" ) then
-		role = UnitGroupRolesAssigned(frame.unitOwner)
-	else
-		local specID = GetArenaOpponentSpec(frame.unitID)
-		role = specID and select(6, GetSpecializationInfoByID(specID))
-	end
-
+	local role = frame.unitType ~= "arena" and Read(UnitGroupRolesAssigned, frame.unitOwner)
 	if( role == "TANK" ) then
 		frame.indicators.lfdRole:SetTexCoord(0, 19/64, 22/64, 41/64)
 		frame.indicators.lfdRole:Show()
@@ -144,15 +163,16 @@ function Indicators:UpdateLFDRole(frame, event)
 	end
 end
 
+-- Main tank / main assist raid roles
 function Indicators:UpdateRole(frame, event)
 	if( not frame.indicators.role or not frame.indicators.role.enabled ) then return end
 
-	if( not UnitInRaid(frame.unit) and not UnitInParty(frame.unit) ) then
+	if( not GetPartyAssignment or not ( Read(UnitInRaid, frame.unit) or Read(UnitInParty, frame.unit) ) ) then
 		frame.indicators.role:Hide()
-	elseif( GetPartyAssignment("MAINTANK", frame.unit) ) then
+	elseif( Read(GetPartyAssignment, "MAINTANK", frame.unit) ) then
 		frame.indicators.role:SetTexture("Interface\\GroupFrame\\UI-Group-MainTankIcon")
 		frame.indicators.role:Show()
-	elseif( GetPartyAssignment("MAINASSIST", frame.unit) ) then
+	elseif( Read(GetPartyAssignment, "MAINASSIST", frame.unit) ) then
 		frame.indicators.role:SetTexture("Interface\\GroupFrame\\UI-Group-MainAssistIcon")
 		frame.indicators.role:Show()
 	else
@@ -162,24 +182,36 @@ end
 
 function Indicators:UpdateLeader(frame)
 	if( not frame.indicators.leader or not frame.indicators.leader.enabled ) then return end
+	local leader = frame.indicators.leader
 
-	if( UnitIsGroupLeader(frame.unit) or (frame.unit == "target" and UnitLeadsAnyGroup(frame.unit)) ) then
-		if( HasLFGRestrictions() ) then
-			frame.indicators.leader:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES")
-			frame.indicators.leader:SetTexCoord(0, 0.296875, 0.015625, 0.3125)
+	local isLeader = UnitIsGroupLeader(frame.unit)
+	-- Secret: we can't pick between the leader and assistant icons, so only the leader crown is shown
+	if( issecretvalue(isLeader) ) then
+		leader:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
+		leader:SetTexCoord(0, 1, 0, 1)
+		setShown(leader, isLeader)
+		return
+	end
+
+	if( isLeader or ( frame.unit == "target" and Read(UnitLeadsAnyGroup, frame.unit) ) ) then
+		if( HasLFGRestrictions and HasLFGRestrictions() ) then
+			leader:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES")
+			leader:SetTexCoord(0, 0.296875, 0.015625, 0.3125)
 		else
-			frame.indicators.leader:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
-			frame.indicators.leader:SetTexCoord(0, 1, 0, 1)
+			leader:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
+			leader:SetTexCoord(0, 1, 0, 1)
 		end
 
-		frame.indicators.leader:Show()
+		leader:SetAlpha(1)
+		leader:Show()
 
-	elseif( UnitIsGroupAssistant(frame.unit) or ( UnitInRaid(frame.unit) and IsEveryoneAssistant() ) ) then
-		frame.indicators.leader:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
-		frame.indicators.leader:SetTexCoord(0, 1, 0, 1)
-		frame.indicators.leader:Show()
+	elseif( Read(UnitIsGroupAssistant, frame.unit) or ( Read(UnitInRaid, frame.unit) and IsEveryoneAssistant and IsEveryoneAssistant() ) ) then
+		leader:SetTexture("Interface\\GroupFrame\\UI-Group-AssistantIcon")
+		leader:SetTexCoord(0, 1, 0, 1)
+		leader:SetAlpha(1)
+		leader:Show()
 	else
-		frame.indicators.leader:Hide()
+		leader:Hide()
 	end
 end
 
@@ -192,29 +224,49 @@ end
 
 function Indicators:UpdatePVPFlag(frame)
 	if( not frame.indicators.pvp or not frame.indicators.pvp.enabled ) then return end
+	local pvp = frame.indicators.pvp
 
-	local faction = UnitFactionGroup(frame.unit)
-	if( UnitIsPVPFreeForAll(frame.unit) ) then
-		frame.indicators.pvp:SetTexture("Interface\\TargetingFrame\\UI-PVP-FFA")
-		frame.indicators.pvp:SetTexCoord(0,1,0,1)
-		frame.indicators.pvp:Show()
-	elseif( faction and faction ~= "Neutral" and UnitIsPVP(frame.unit) ) then
-		frame.indicators.pvp:SetTexture(string.format("Interface\\TargetingFrame\\UI-PVP-%s", faction))
-		frame.indicators.pvp:SetTexCoord(0,1,0,1)
-		frame.indicators.pvp:Show()
+	local faction = Read(UnitFactionGroup, frame.unit)
+	if( Read(UnitIsPVPFreeForAll, frame.unit) ) then
+		pvp:SetTexture("Interface\\TargetingFrame\\UI-PVP-FFA")
+		pvp:SetTexCoord(0, 1, 0, 1)
+		pvp:SetAlpha(1)
+		pvp:Show()
+	elseif( faction and faction ~= "Neutral" ) then
+		pvp:SetTexture(string.format("Interface\\TargetingFrame\\UI-PVP-%s", faction))
+		pvp:SetTexCoord(0, 1, 0, 1)
+		setShown(pvp, UnitIsPVP(frame.unit))
 	else
-		frame.indicators.pvp:Hide()
+		pvp:Hide()
 	end
 end
 
-function Indicators:UpdatePetBattle(frame)
-	if( UnitIsWildBattlePet(frame.unit) or UnitIsBattlePetCompanion(frame.unit) ) then
-		local petType = UnitBattlePetType(frame.unit)
-		frame.indicators.petBattle:SetTexture(string.format("Interface\\TargetingFrame\\PetBadge-%s", PET_TYPE_SUFFIX[petType]))
-		frame.indicators.petBattle:Show()
-	else
-		frame.indicators.petBattle:Hide()
+-- Hunter pet happiness (the pet frame only)
+local HAPPINESS = {
+	[1] = {atlas = "UI-PetMad", coords = {0.375, 0.5625, 0, 0.359375}},
+	[2] = {atlas = "UI-PetNeutral", coords = {0.1875, 0.375, 0, 0.359375}},
+	[3] = {atlas = "UI-PetHappiness", coords = {0, 0.1875, 0, 0.359375}},
+}
+
+function Indicators:UpdateHappiness(frame)
+	if( not frame.indicators.happiness or not frame.indicators.happiness.enabled ) then return end
+	local indicator = frame.indicators.happiness
+
+	local isHunterPet = HasPetUI and select(2, HasPetUI())
+	local happiness = isHunterPet and GetPetHappiness and Read(GetPetHappiness)
+	local info = happiness and HAPPINESS[happiness]
+	if( not info or not isUnit(frame.unit, "pet") ) then
+		indicator:Hide()
+		return
 	end
+
+	if( C_Texture.GetAtlasInfo(info.atlas) ) then
+		indicator:SetAtlas(info.atlas)
+	else
+		indicator:SetTexture("Interface\\PetPaperDollFrame\\UI-PetHappiness")
+		indicator:SetTexCoord(info.coords[1], info.coords[2], info.coords[3], info.coords[4])
+	end
+	indicator:Show()
 end
 
 -- Non-player units do not give events when they enter or leave combat, so polling is necessary
@@ -223,11 +275,7 @@ local function combatMonitor(self, elapsed)
 	if( self.timeElapsed < 1 ) then return end
 	self.timeElapsed = self.timeElapsed - 1
 
-	if( UnitAffectingCombat(self.parent.unit) ) then
-		self.status:Show()
-	else
-		self.status:Hide()
-	end
+	setShown(self.status, UnitAffectingCombat(self.parent.unit))
 end
 
 -- It looks like the combat check for players is a bit buggy when they are in a vehicle, so swap it to also check polling
@@ -239,16 +287,25 @@ end
 function Indicators:UpdateStatus(frame)
 	if( not frame.indicators.status or not frame.indicators.status.enabled ) then return end
 
-	if( UnitAffectingCombat(frame.unitOwner) ) then
+	local inCombat = UnitAffectingCombat(frame.unitOwner)
+	if( issecretvalue(inCombat) ) then
 		frame.indicators.status:SetTexCoord(0.50, 1.0, 0.0, 0.49)
-		frame.indicators.status:Show()
+		setShown(frame.indicators.status, inCombat)
+	elseif( inCombat ) then
+		frame.indicators.status:SetTexCoord(0.50, 1.0, 0.0, 0.49)
+		setShown(frame.indicators.status, true)
 	elseif( frame.unitRealType == "player" and IsResting() ) then
 		frame.indicators.status:SetTexCoord(0.0, 0.50, 0.0, 0.421875)
-		frame.indicators.status:Show()
+		setShown(frame.indicators.status, true)
 	else
 		frame.indicators.status:Hide()
 	end
 end
+
+local READY_TEXTURE = READY_CHECK_READY_TEXTURE or "UI-LFG-ReadyMark"
+local NOT_READY_TEXTURE = READY_CHECK_NOT_READY_TEXTURE or "UI-LFG-DeclineMark"
+local WAITING_TEXTURE = READY_CHECK_WAITING_TEXTURE or "UI-LFG-PendingMark"
+local IGNORE_ATLAS_SIZE = TextureKitConstants and TextureKitConstants.IgnoreAtlasSize
 
 local FADEOUT_TIME = 6
 function Indicators:UpdateReadyCheck(frame, event)
@@ -288,13 +345,13 @@ function Indicators:UpdateReadyCheck(frame, event)
 
 		-- Player never responded so they are AFK
 		if( frame.indicators.ready.status == "waiting" ) then
-			frame.indicators.ready:SetAtlas(READY_CHECK_NOT_READY_TEXTURE, TextureKitConstants.IgnoreAtlasSize)
+			frame.indicators.ready:SetAtlas(NOT_READY_TEXTURE, IGNORE_ATLAS_SIZE)
 		end
 		return
 	end
 
 	-- Have a state change in ready status
-	local status = GetReadyCheckStatus(frame.unit)
+	local status = GetReadyCheckStatus and Read(GetReadyCheckStatus, frame.unit)
 	if( not status ) then
 		frame.indicators.ready.status = nil
 		frame.indicators.ready:Hide()
@@ -302,14 +359,14 @@ function Indicators:UpdateReadyCheck(frame, event)
 	end
 
 	if( status == "ready" ) then
-		frame.indicators.ready:SetAtlas(READY_CHECK_READY_TEXTURE, TextureKitConstants.IgnoreAtlasSize)
+		frame.indicators.ready:SetAtlas(READY_TEXTURE, IGNORE_ATLAS_SIZE)
 	elseif( status == "notready" ) then
-		frame.indicators.ready:SetAtlas(READY_CHECK_NOT_READY_TEXTURE, TextureKitConstants.IgnoreAtlasSize)
+		frame.indicators.ready:SetAtlas(NOT_READY_TEXTURE, IGNORE_ATLAS_SIZE)
 	elseif( status == "waiting" ) then
-		frame.indicators.ready:SetAtlas(READY_CHECK_WAITING_TEXTURE, TextureKitConstants.IgnoreAtlasSize)
+		frame.indicators.ready:SetAtlas(WAITING_TEXTURE, IGNORE_ATLAS_SIZE)
 	end
 
-	frame.indicators:SetScript("OnUpdate", nil)
+	if( self.fadeTimer ) then self.fadeTimer.fadeList[frame.indicators.ready] = nil end
 	frame.indicators.ready.status = status
 	frame.indicators.ready:SetAlpha(1.0)
 	frame.indicators.ready:Show()
@@ -350,26 +407,20 @@ function Indicators:OnEnable(frame)
 		frame.indicators:SetScript("OnUpdate", nil)
 	end
 
-	if( config.indicators.arenaSpec and config.indicators.arenaSpec.enabled ) then
-		frame:RegisterNormalEvent("ARENA_OPPONENT_UPDATE", self, "UpdateArenaSpec")
-		frame:RegisterUpdateFunc(self, "UpdateArenaSpec")
-        frame.indicators.arenaSpec = frame.indicators.arenaSpec or frame.indicators:CreateTexture(nil, "OVERLAY")
-	end
-
 	if( config.indicators.phase and config.indicators.phase.enabled ) then
 		-- Player phase changes do not generate a phase change event. This seems to be the best
-		-- TODO: what event does fire here? frame:RegisterNormalEvent("UPDATE_WORLD_STATES", self, "UpdatePhase")
-        frame:RegisterUpdateFunc(self, "UpdatePhase")
-        frame.indicators.phase = frame.indicators.phase or frame.indicators:CreateTexture(nil, "OVERLAY")
-    end
+		frame:RegisterUnitEvent("UNIT_PHASE", self, "UpdatePhase")
+		frame:RegisterUpdateFunc(self, "UpdatePhase")
+		frame.indicators.phase = frame.indicators.phase or frame.indicators:CreateTexture(nil, "OVERLAY")
+	end
 
 	if( config.indicators.resurrect and config.indicators.resurrect.enabled ) then
-	    frame:RegisterNormalEvent("INCOMING_RESURRECT_CHANGED", self, "UpdateResurrect")
-	    frame:RegisterNormalEvent("UNIT_OTHER_PARTY_CHANGED", self, "UpdateResurrect")
-	    frame:RegisterUpdateFunc(self, "UpdateResurrect")
+		frame:RegisterNormalEvent("INCOMING_RESURRECT_CHANGED", self, "UpdateResurrect")
+		frame:RegisterNormalEvent("UNIT_OTHER_PARTY_CHANGED", self, "UpdateResurrect")
+		frame:RegisterUpdateFunc(self, "UpdateResurrect")
 
-	    frame.indicators.resurrect = frame.indicators.resurrect or frame.indicators:CreateTexture(nil, "OVERLAY")
-	    frame.indicators.resurrect:SetTexture("Interface\\RaidFrame\\Raid-Icon-Rez")
+		frame.indicators.resurrect = frame.indicators.resurrect or frame.indicators:CreateTexture(nil, "OVERLAY")
+		frame.indicators.resurrect:SetTexture("Interface\\RaidFrame\\Raid-Icon-Rez")
 	end
 
 	if( config.indicators.sumPending and config.indicators.sumPending.enabled ) then
@@ -447,9 +498,12 @@ function Indicators:OnEnable(frame)
 		frame.indicators.questBoss:SetTexture("Interface\\TargetingFrame\\PortraitQuestBadge")
 	end
 
-	if( config.indicators.petBattle and config.indicators.petBattle.enabled ) then
-		frame:RegisterUpdateFunc(self, "UpdatePetBattle")
-		frame.indicators.petBattle = frame.indicators.petBattle or frame.indicators:CreateTexture(nil, "OVERLAY")
+	if( config.indicators.happiness and config.indicators.happiness.enabled ) then
+		frame:RegisterUnitEvent("UNIT_HAPPINESS", self, "UpdateHappiness")
+		frame:RegisterNormalEvent("UNIT_PET", self, "UpdateHappiness")
+		frame:RegisterUpdateFunc(self, "UpdateHappiness")
+
+		frame.indicators.happiness = frame.indicators.happiness or frame.indicators:CreateTexture(nil, "OVERLAY")
 	end
 
 	-- As they all share the function, register it as long as one is active

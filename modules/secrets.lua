@@ -94,7 +94,7 @@ Secrets.ZeroToOne = CurveConstants and CurveConstants.ZeroToOne or createCurve("
 function Secrets.HealthPercent(unit)
 	if( UnitHealthPercent and Secrets.ScaleTo100 ) then
 		local ok, value = pcall(UnitHealthPercent, unit, true, Secrets.ScaleTo100)
-		if( ok and value ~= nil ) then return value end
+		if( ok and (issecretvalue(value) or value ~= nil) ) then return value end
 	end
 
 	local cur, max = UnitHealth(unit), UnitHealthMax(unit)
@@ -106,7 +106,7 @@ end
 function Secrets.PowerPercent(unit, powerType)
 	if( UnitPowerPercent and Secrets.ScaleTo100 ) then
 		local ok, value = pcall(UnitPowerPercent, unit, powerType, false, Secrets.ScaleTo100)
-		if( ok and value ~= nil ) then return value end
+		if( ok and (issecretvalue(value) or value ~= nil) ) then return value end
 	end
 
 	local cur, max = UnitPower(unit, powerType), UnitPowerMax(unit, powerType)
@@ -121,7 +121,7 @@ function Secrets.SetBar(bar, cur, max, percentFn)
 	ok = ok and pcall(bar.SetValue, bar, cur)
 	if( not ok and percentFn ) then
 		local pct = percentFn()
-		if( pct ~= nil ) then
+		if( issecretvalue(pct) or pct ~= nil ) then
 			pcall(bar.SetMinMaxValues, bar, 0, 100)
 			pcall(bar.SetValue, bar, pct)
 		end
@@ -130,9 +130,9 @@ function Secrets.SetBar(bar, cur, max, percentFn)
 end
 
 -- Short number text ("12.3K"); fine with secrets.
-local abbreviate = (C_StringUtil and C_StringUtil.AbbreviateNumbers) or AbbreviateNumbers
-local abbreviateLarge = (C_StringUtil and C_StringUtil.AbbreviateLargeNumbers) or AbbreviateLargeNumbers
-local breakUp = (C_StringUtil and C_StringUtil.BreakUpLargeNumbers) or BreakUpLargeNumbers
+local abbreviate = (C_StringUtil and C_StringUtil.AbbreviateNumbers) or _G.AbbreviateNumbers
+local abbreviateLarge = (C_StringUtil and C_StringUtil.AbbreviateLargeNumbers) or _G.AbbreviateLargeNumbers
+local breakUp = (C_StringUtil and C_StringUtil.BreakUpLargeNumbers) or _G.BreakUpLargeNumbers
 function Secrets.Abbreviate(value)
 	if( abbreviate ) then
 		local ok, text = pcall(abbreviate, value)
