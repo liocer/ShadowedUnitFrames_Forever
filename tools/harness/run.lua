@@ -204,28 +204,42 @@ phase("build every options page", function()
 		if not okGet then error(opts) end
 		-- walk the whole tree, calling every function-valued field the dialog would
 		local seen = {}
-		local function walk(o, path, info)
+		local function walk(o, path, handler)
 			if type(o) ~= "table" or seen[o] then return end
 			seen[o] = true
-			info = info or {}
+			handler = o.handler or handler
+			local function mkinfo()
+				local inf = {options = opts, option = o, type = o.type, handler = handler, arg = o.arg, uiType = "dialog", uiName = "SUF-test-1.0"}
+				for i, p in ipairs(path) do inf[i] = p end
+				return inf
+			end
+			if type(o.hidden) == "function" then
+				local ok, h = pcall(o.hidden, mkinfo())
+				if ok and h then return end
+			elseif o.hidden == true then return end
 			for _, field in ipairs({"name", "desc", "hidden", "disabled", "values", "get", "min", "max"}) do
 				local v = o[field]
 				if type(v) == "function" then
-					local inf = {options = opts, option = o, type = o.type, handler = o.handler, arg = o.arg}
-					for i, p in ipairs(path) do inf[i] = p end
-					H.pcall("options " .. table.concat(path, "."), v, inf)
+					local inf = mkinfo()
+					if field == "get" and o.type == "group" then -- groups only pass get down
+					else
+						local ok, val = H.pcall("options " .. table.concat(path, "."), v, inf)
+						if field == "get" and ok and (o.type == "toggle" or o.type == "range") and type(o.set) == "function" then
+							H.pcall("options set " .. table.concat(path, "."), o.set, mkinfo(), val)
+						end
+					end
 				end
 			end
 			if type(o.args) == "table" then
 				for k, child in pairs(o.args) do
 					local p = {unpack(path)}
 					table.insert(p, k)
-					walk(child, p)
+					walk(child, p, handler)
 				end
 			end
 			if type(o.plugins) == "table" then
 				for _, plug in pairs(o.plugins) do
-					for k, child in pairs(plug) do local p = {unpack(path)} table.insert(p, k) walk(child, p) end
+					for k, child in pairs(plug) do local p = {unpack(path)} table.insert(p, k) walk(child, p, handler) end
 				end
 			end
 		end

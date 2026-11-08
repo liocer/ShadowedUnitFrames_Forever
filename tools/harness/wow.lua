@@ -131,7 +131,7 @@ function strsplit(sep, str, limit)
 	end
 	return unpack(out)
 end
-string.split = function(str, sep, limit) return strsplit(sep, str, limit) end
+string.split = strsplit
 function strtrim(s, chars) chars = chars or " \t\r\n" local p = "[" .. chars:gsub("%p", "%%%0") .. "]" return (s:gsub("^" .. p .. "+", ""):gsub(p .. "+$", "")) end
 string.trim = strtrim
 function strjoin(sep, ...) return table.concat({...}, sep) end

@@ -53,15 +53,14 @@ local PAGE_DESC = {
 	["tags"] = L["Advanced tag management, allows you to add your own custom tags."],
 	["filter"] = L["Simple aura filtering by whitelists and blacklists."],
 }
-local INDICATOR_NAMES = {["questBoss"] = L["Quest Boss"], ["leader"] = L["Leader / Assist"], ["lfdRole"] = L["Class Role"], ["masterLoot"] = L["Master Looter"], ["pvp"] = L["PvP Flag"], ["raidTarget"] = L["Raid Target"], ["ready"] = L["Ready Status"], ["role"] = L["Raid Role"], ["status"] = L["Combat Status"], ["class"] = L["Class Icon"], ["resurrect"] = L["Resurrect Status"], ["sumPending"] = L["Summon Pending"], ["phase"] = L["Other Party/Phase Status"], ["petBattle"] = L["Pet Battle"], ["arenaSpec"] = L["Arena Spec"]}
+local INDICATOR_NAMES = {["questBoss"] = L["Quest Boss"], ["leader"] = L["Leader / Assist"], ["lfdRole"] = L["Class Role"], ["masterLoot"] = L["Master Looter"], ["pvp"] = L["PvP Flag"], ["raidTarget"] = L["Raid Target"], ["ready"] = L["Ready Status"], ["role"] = L["Raid Role"], ["status"] = L["Combat Status"], ["class"] = L["Class Icon"], ["resurrect"] = L["Resurrect Status"], ["sumPending"] = L["Summon Pending"], ["phase"] = L["Other Party/Phase Status"], ["happiness"] = L["Pet Happiness"]}
 local AREA_NAMES = {["arena"] = L["Arenas"],["none"] = L["Everywhere else"], ["party"] = L["Party instances"], ["pvp"] = L["Battleground"], ["raid"] = L["Raid instances"], ["neighborhood"] = L["Neighborhood"]}
 local INDICATOR_DESC = {
 		["leader"] = L["Crown indicator for group leader or assistants."], ["lfdRole"] = L["Role the unit is playing."],
 		["masterLoot"] = L["Bag indicator for master looters."], ["pvp"] = L["PVP flag indicator, Horde for Horde flagged pvpers and Alliance for Alliance flagged pvpers."],
 		["raidTarget"] = L["Raid target indicator."], ["ready"] = L["Ready status of group members."], ["phase"] = L["Shows when a party member is in a different phase or another group."],
-		["questBoss"] = L["Shows that a NPC is a boss for a quest."], ["petBattle"] = L["Shows what kind of pet the unit is for pet battles."],
-		["role"] = L["Raid role indicator, adds a shield indicator for main tanks and a sword icon for main assists."], ["status"] = L["Status indicator, shows if the unit is currently in combat. For the player it will also show if you are rested."], ["class"] = L["Class icon for players."],
-		["arenaSpec"] = L["Talent spec of your arena opponents."]
+		["questBoss"] = L["Shows that a NPC is a boss for a quest."], ["happiness"] = L["Indicator for the current pet happiness."],
+		["role"] = L["Raid role indicator, adds a shield indicator for main tanks and a sword icon for main assists."], ["status"] = L["Status indicator, shows if the unit is currently in combat. For the player it will also show if you are rested."], ["class"] = L["Class icon for players."]
 }
 local TAG_GROUPS = {["classification"] = L["Classifications"], ["health"] = L["Health"], ["misc"] = L["Miscellaneous"], ["playerthreat"] = L["Player threat"], ["power"] = L["Power"], ["status"] = L["Status"], ["threat"] = L["Threat"], ["raid"] = L["Raid"], ["classspec"] = L["Class Specific"], ["classtimer"] = L["Class Timer"]}
 
@@ -500,7 +499,8 @@ local function loadGeneralOptions()
 	}
 
 	local function validateSpell(info, spell)
-		if( spell and spell ~= "" and not GetSpellName(spell) ) then
+		-- Names only resolve for spells you know; IDs always do
+		if( spell and spell ~= "" and not GetSpellName(tonumber(spell) or spell) and not C_Spell.GetSpellInfo(tonumber(spell) or spell) ) then
 			return string.format(L["Invalid spell \"%s\" entered."], spell or "")
 		end
 
@@ -1090,38 +1090,6 @@ local function loadGeneralOptions()
 							}
 						},
 					},
-					stagger = {
-						order = 1.5,
-						type = "group",
-						inline = true,
-						name = L["Stagger"],
-						set = setColor,
-						get = getColor,
-						hidden = function() return select(2, UnitClass("player")) ~= "MONK" end,
-						args = {
-							STAGGER_GREEN = {
-								order = 0,
-								type = "color",
-								name = L["Green (<30% HP)"],
-								desc = L["Stagger bar color when the staggered amount is <30% of your HP."],
-								arg = "powerColors.STAGGER_GREEN"
-							},
-							STAGGER_YELLOW = {
-								order = 1,
-								type = "color",
-								name = L["Yellow (>30% HP)"],
-								desc = L["Stagger bar color when the staggered amount is >30% of your HP."],
-								arg = "powerColors.STAGGER_YELLOW"
-							},
-							STAGGER_RED = {
-								order = 2,
-								type = "color",
-								name = L["Red (>70% HP)"],
-								desc = L["Stagger bar color when the staggered amount is >70% of your HP."],
-								arg = "powerColors.STAGGER_RED"
-							}
-						}
-					},
 					power = {
 						order = 2,
 						type = "group",
@@ -1158,19 +1126,6 @@ local function loadGeneralOptions()
 								arg = "powerColors.ENERGY",
 								width = "half",
 							},
-							RUNIC_POWER = {
-								order = 6,
-								type = "color",
-								name = L["Runic Power"],
-								arg = "powerColors.RUNIC_POWER",
-							},
-							RUNES = {
-								order = 7,
-								type = "color",
-								name = L["Runes"],
-								arg = "powerColors.RUNES",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "DEATHKNIGHT" end,
-							},
 							AMMOSLOT = {
 								order = 9,
 								type = "color",
@@ -1197,92 +1152,6 @@ local function loadGeneralOptions()
 								name = L["Aura Combo Points"],
 								arg = "powerColors.AURAPOINTS",
 								hidden = function() return not ShadowUF.modules.auraPoints end
-							},
-							INSANITY = {
-								order = 12,
-								type = "color",
-								name = L["Insanity"],
-								arg = "powerColors.INSANITY",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "PRIEST" end,
-							},
-							MAELSTROM = {
-								order = 12,
-								type = "color",
-								name = L["Maelstrom"],
-								arg = "powerColors.MAELSTROM",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "SHAMAN" end,
-							},
-							HOLYPOWER = {
-								order = 12,
-								type = "color",
-								name = L["Holy Power"],
-								arg = "powerColors.HOLYPOWER",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "PALADIN" end,
-							},
-							SOULSHARDS = {
-								order = 14,
-								type = "color",
-								name = L["Soul Shards"],
-								hasAlpha = true,
-								arg = "powerColors.SOULSHARDS",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "WARLOCK" end,
-							},
-							ARCANECHARGES = {
-								order = 15,
-								type = "color",
-								name = L["Arcane Charges"],
-								hasAlpha = true,
-								arg = "powerColors.ARCANECHARGES",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "MAGE" end,
-							},
-							CHI = {
-								order = 17,
-								type = "color",
-								name = L["Chi"],
-								arg = "powerColors.CHI",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "MONK" end,
-							},
-							FURY = {
-								order = 17,
-								type = "color",
-								name = L["Fury"],
-								arg = "powerColors.FURY",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "DEMONHUNTER" end,
-							},
-							PAIN = {
-								order = 17,
-								type = "color",
-								name = L["Pain"],
-								arg = "powerColors.PAIN",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "DEMONHUNTER" end,
-							},
-							LUNAR_POWER = {
-								order = 17,
-								type = "color",
-								name = L["Astral Power"],
-								arg = "powerColors.LUNAR_POWER",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "DRUID" end,
-							},
-							MUSHROOMS = {
-								order = 17,
-								type = "color",
-								name = L["Mushrooms"],
-								arg = "powerColors.MUSHROOMS",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "DRUID" end,
-							},
-							STATUE = {
-								order = 17,
-								type = "color",
-								name = L["Statue"],
-								arg = "powerColors.STATUE",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "MONK" end,
-							},
-							RUNEOFPOWER = {
-								order = 17.5,
-								type = "color",
-								name = L["Rune of Power"],
-								arg = "powerColors.RUNEOFPOWER",
-								hidden = function(info) return select(2, UnitClass("player")) ~= "MAGE" end,
 							},
 							ALTERNATE = {
 								order = 19,
@@ -2825,556 +2694,6 @@ local function loadUnitOptions()
 							},
 						},
 					},
-					-- SOUL SHARDS
-					barSouls = {
-						order = 4,
-						type = "group",
-						inline = true,
-						name = L["Soul Shards"],
-						hidden = function(info) return playerClass ~= "WARLOCK" or not getVariable(info[2], "soulShards", nil, "isBar") or not getVariable(info[2], nil, nil, "soulShards") end,
-						args = {
-							enabled = {
-								order = 1,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Soul Shards"]),
-								hidden = false,
-								arg = "soulShards.enabled",
-							},
-							growth = {
-								order = 2,
-								type = "select",
-								name = L["Growth"],
-								values = {["LEFT"] = L["Left"], ["RIGHT"] = L["Right"]},
-								hidden = false,
-								arg = "soulShards.growth",
-							},
-							showAlways = {
-								order = 3,
-								type = "toggle",
-								name = L["Don't hide when empty"],
-								hidden = false,
-								arg = "soulShards.showAlways",
-							},
-						},
-					},
-					soulShards = {
-						order = 4,
-						type = "group",
-						inline = true,
-						name = L["Soul Shards"],
-						hidden = function(info) if( info[2] == "global" or getVariable(info[2], "soulShards", nil, "isBar") ) then return true end return hideRestrictedOption(info) end,
-						args = {
-							enabled = {
-								order = 0,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Soul Shards"]),
-								hidden = false,
-								arg = "soulShards.enabled",
-							},
-							sep1 = {
-								order = 1,
-								type = "description",
-								name = "",
-								width = "full",
-								hidden = hideAdvancedOption,
-							},
-							growth = {
-								order = 2,
-								type = "select",
-								name = L["Growth"],
-								values = {["UP"] = L["Up"], ["LEFT"] = L["Left"], ["RIGHT"] = L["Right"], ["DOWN"] = L["Down"]},
-								hidden = false,
-								arg = "soulShards.growth",
-							},
-							size = {
-								order = 2,
-								type = "range",
-								name = L["Size"],
-								min = 0, max = 50, step = 1, softMin = 0, softMax = 20,
-								hidden = hideAdvancedOption,
-								arg = "soulShards.size",
-							},
-							spacing = {
-								order = 3,
-								type = "range",
-								name = L["Spacing"],
-								min = -30, max = 30, step = 1, softMin = -15, softMax = 15,
-								hidden = hideAdvancedOption,
-								arg = "soulShards.spacing",
-							},
-							sep2 = {
-								order = 4,
-								type = "description",
-								name = "",
-								width = "full",
-								hidden = hideAdvancedOption,
-							},
-							anchorPoint = {
-								order = 5,
-								type = "select",
-								name = L["Anchor point"],
-								values = positionList,
-								hidden = false,
-								arg = "soulShards.anchorPoint",
-							},
-							x = {
-								order = 6,
-								type = "range",
-								name = L["X Offset"],
-								min = -30, max = 30, step = 1,
-								hidden = false,
-								arg = "soulShards.x",
-							},
-							y = {
-								order = 7,
-								type = "range",
-								name = L["Y Offset"],
-								min = -30, max = 30, step = 1,
-								hidden = false,
-								arg = "soulShards.y",
-							},
-						},
-					},
-					-- ARCANE CHARGES
-					barArcane = {
-						order = 4,
-						type = "group",
-						inline = true,
-						name = L["Arcane Charges"],
-						hidden = function(info) return playerClass ~= "MAGE" or not getVariable(info[2], "arcaneCharges", nil, "isBar") or not getVariable(info[2], nil, nil, "arcaneCharges") end,
-						args = {
-							enabled = {
-								order = 1,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Arcane Charges"]),
-								hidden = false,
-								arg = "arcaneCharges.enabled",
-							},
-							growth = {
-								order = 2,
-								type = "select",
-								name = L["Growth"],
-								values = {["LEFT"] = L["Left"], ["RIGHT"] = L["Right"]},
-								hidden = false,
-								arg = "arcaneCharges.growth",
-							},
-							showAlways = {
-								order = 3,
-								type = "toggle",
-								name = L["Don't hide when empty"],
-								hidden = false,
-								arg = "arcaneCharges.showAlways",
-							},
-						},
-					},
-					arcaneCharges = {
-						order = 4,
-						type = "group",
-						inline = true,
-						name = L["Arcane Charges"],
-						hidden = function(info) if( info[2] == "global" or getVariable(info[2], "arcaneCharges", nil, "isBar") ) then return true end return hideRestrictedOption(info) end,
-						args = {
-							enabled = {
-								order = 0,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Arcane Charges"]),
-								hidden = false,
-								arg = "arcaneCharges.enabled",
-							},
-							sep1 = {
-								order = 1,
-								type = "description",
-								name = "",
-								width = "full",
-								hidden = hideAdvancedOption,
-							},
-							growth = {
-								order = 2,
-								type = "select",
-								name = L["Growth"],
-								values = {["UP"] = L["Up"], ["LEFT"] = L["Left"], ["RIGHT"] = L["Right"], ["DOWN"] = L["Down"]},
-								hidden = false,
-								arg = "arcaneCharges.growth",
-							},
-							size = {
-								order = 2,
-								type = "range",
-								name = L["Size"],
-								min = 0, max = 50, step = 1, softMin = 0, softMax = 20,
-								hidden = hideAdvancedOption,
-								arg = "arcaneCharges.size",
-							},
-							spacing = {
-								order = 3,
-								type = "range",
-								name = L["Spacing"],
-								min = -30, max = 30, step = 1, softMin = -15, softMax = 15,
-								hidden = hideAdvancedOption,
-								arg = "arcaneCharges.spacing",
-							},
-							sep2 = {
-								order = 4,
-								type = "description",
-								name = "",
-								width = "full",
-								hidden = hideAdvancedOption,
-							},
-							anchorPoint = {
-								order = 5,
-								type = "select",
-								name = L["Anchor point"],
-								values = positionList,
-								hidden = false,
-								arg = "arcaneCharges.anchorPoint",
-							},
-							x = {
-								order = 6,
-								type = "range",
-								name = L["X Offset"],
-								min = -30, max = 30, step = 1,
-								hidden = false,
-								arg = "arcaneCharges.x",
-							},
-							y = {
-								order = 7,
-								type = "range",
-								name = L["Y Offset"],
-								min = -30, max = 30, step = 1,
-								hidden = false,
-								arg = "arcaneCharges.y",
-							},
-						},
-					},
-					-- HOLY POWER
-					barHolyPower = {
-						order = 4,
-						type = "group",
-						inline = true,
-						name = L["Holy Power"],
-						hidden = function(info) return playerClass ~= "PALADIN" or not getVariable(info[2], "holyPower", nil, "isBar") or not getVariable(info[2], nil, nil, "holyPower") end,
-						args = {
-							enabled = {
-								order = 1,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Holy Power"]),
-								hidden = false,
-								arg = "holyPower.enabled",
-							},
-							growth = {
-								order = 2,
-								type = "select",
-								name = L["Growth"],
-								values = {["LEFT"] = L["Left"], ["RIGHT"] = L["Right"]},
-								hidden = false,
-								arg = "holyPower.growth",
-							},
-							showAlways = {
-								order = 3,
-								type = "toggle",
-								name = L["Don't hide when empty"],
-								hidden = false,
-								arg = "holyPower.showAlways",
-							},
-						},
-					},
-					holyPower = {
-						order = 4,
-						type = "group",
-						inline = true,
-						name = L["Holy Power"],
-						hidden = function(info) if( info[2] == "global" or getVariable(info[2], "holyPower", nil, "isBar") ) then return true end return hideRestrictedOption(info) end,
-						args = {
-							enabled = {
-								order = 0,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Holy Power"]),
-								hidden = false,
-								arg = "holyPower.enabled",
-							},
-							sep1 = {
-								order = 1,
-								type = "description",
-								name = "",
-								width = "full",
-								hidden = hideAdvancedOption,
-							},
-							growth = {
-								order = 2,
-								type = "select",
-								name = L["Growth"],
-								values = {["UP"] = L["Up"], ["LEFT"] = L["Left"], ["RIGHT"] = L["Right"], ["DOWN"] = L["Down"]},
-								hidden = false,
-								arg = "holyPower.growth",
-							},
-							size = {
-								order = 2,
-								type = "range",
-								name = L["Size"],
-								min = 0, max = 50, step = 1, softMin = 0, softMax = 20,
-								hidden = hideAdvancedOption,
-								arg = "holyPower.size",
-							},
-							spacing = {
-								order = 3,
-								type = "range",
-								name = L["Spacing"],
-								min = -30, max = 30, step = 1, softMin = -15, softMax = 15,
-								hidden = hideAdvancedOption,
-								arg = "holyPower.spacing",
-							},
-							sep2 = {
-								order = 4,
-								type = "description",
-								name = "",
-								width = "full",
-								hidden = hideAdvancedOption,
-							},
-							anchorPoint = {
-								order = 5,
-								type = "select",
-								name = L["Anchor point"],
-								values = positionList,
-								hidden = false,
-								arg = "holyPower.anchorPoint",
-							},
-							x = {
-								order = 6,
-								type = "range",
-								name = L["X Offset"],
-								min = -30, max = 30, step = 1,
-								hidden = false,
-								arg = "holyPower.x",
-							},
-							y = {
-								order = 7,
-								type = "range",
-								name = L["Y Offset"],
-								min = -30, max = 30, step = 1,
-								hidden = false,
-								arg = "holyPower.y",
-							},
-						},
-					},
-					-- SHADOW ORBS
-					barShadowOrbs = {
-						order = 4,
-						type = "group",
-						inline = true,
-						name = L["Shadow Orbs"],
-						hidden = function(info) return playerClass ~= "PRIEST" or not getVariable(info[2], "shadowOrbs", nil, "isBar") or not getVariable(info[2], nil, nil, "shadowOrbs") end,
-						args = {
-							enabled = {
-								order = 1,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Shadow Orbs"]),
-								hidden = false,
-								arg = "shadowOrbs.enabled",
-							},
-							growth = {
-								order = 2,
-								type = "select",
-								name = L["Growth"],
-								values = {["LEFT"] = L["Left"], ["RIGHT"] = L["Right"]},
-								hidden = false,
-								arg = "shadowOrbs.growth",
-							},
-							showAlways = {
-								order = 3,
-								type = "toggle",
-								name = L["Don't hide when empty"],
-								hidden = false,
-								arg = "shadowOrbs.showAlways",
-							},
-						},
-					},
-					shadowOrbs = {
-						order = 4,
-						type = "group",
-						inline = true,
-						name = L["Holy Power"],
-						hidden = function(info) if( info[2] == "global" or getVariable(info[2], "shadowOrbs", nil, "isBar") ) then return true end return hideRestrictedOption(info) end,
-						args = {
-							enabled = {
-								order = 0,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Shadow Orbs"]),
-								hidden = false,
-								arg = "shadowOrbs.enabled",
-							},
-							sep1 = {
-								order = 1,
-								type = "description",
-								name = "",
-								width = "full",
-								hidden = hideAdvancedOption,
-							},
-							growth = {
-								order = 2,
-								type = "select",
-								name = L["Growth"],
-								values = {["UP"] = L["Up"], ["LEFT"] = L["Left"], ["RIGHT"] = L["Right"], ["DOWN"] = L["Down"]},
-								hidden = false,
-								arg = "shadowOrbs.growth",
-							},
-							size = {
-								order = 2,
-								type = "range",
-								name = L["Size"],
-								min = 0, max = 50, step = 1, softMin = 0, softMax = 20,
-								hidden = hideAdvancedOption,
-								arg = "shadowOrbs.size",
-							},
-							spacing = {
-								order = 3,
-								type = "range",
-								name = L["Spacing"],
-								min = -30, max = 30, step = 1, softMin = -15, softMax = 15,
-								hidden = hideAdvancedOption,
-								arg = "shadowOrbs.spacing",
-							},
-							sep2 = {
-								order = 4,
-								type = "description",
-								name = "",
-								width = "full",
-								hidden = hideAdvancedOption,
-							},
-							anchorPoint = {
-								order = 5,
-								type = "select",
-								name = L["Anchor point"],
-								values = positionList,
-								hidden = false,
-								arg = "shadowOrbs.anchorPoint",
-							},
-							x = {
-								order = 6,
-								type = "range",
-								name = L["X Offset"],
-								min = -30, max = 30, step = 1,
-								hidden = false,
-								arg = "shadowOrbs.x",
-							},
-							y = {
-								order = 7,
-								type = "range",
-								name = L["Y Offset"],
-								min = -30, max = 30, step = 1,
-								hidden = false,
-								arg = "shadowOrbs.y",
-							},
-						},
-					},
-					-- Chi
-					barChi = {
-						order = 4,
-						type = "group",
-						inline = true,
-						name = L["Chi"],
-						hidden = function(info) return playerClass ~= "MONK" or not getVariable(info[2], "chi", nil, "isBar") or not getVariable(info[2], nil, nil, "chi") end,
-						args = {
-							enabled = {
-								order = 1,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Chi"]),
-								hidden = false,
-								arg = "chi.enabled",
-							},
-							growth = {
-								order = 2,
-								type = "select",
-								name = L["Growth"],
-								values = {["LEFT"] = L["Left"], ["RIGHT"] = L["Right"]},
-								hidden = false,
-								arg = "chi.growth",
-							},
-							showAlways = {
-								order = 3,
-								type = "toggle",
-								name = L["Don't hide when empty"],
-								hidden = false,
-								arg = "chi.showAlways",
-							},
-						},
-					},
-					chi = {
-						order = 4,
-						type = "group",
-						inline = true,
-						name = L["Chi"],
-						hidden = function(info) if( info[2] == "global" or getVariable(info[2], "chi", nil, "isBar") ) then return true end return hideRestrictedOption(info) end,
-						args = {
-							enabled = {
-								order = 0,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Chi"]),
-								hidden = false,
-								arg = "chi.enabled",
-							},
-							sep1 = {
-								order = 1,
-								type = "description",
-								name = "",
-								width = "full",
-								hidden = hideAdvancedOption,
-							},
-							growth = {
-								order = 2,
-								type = "select",
-								name = L["Growth"],
-								values = {["UP"] = L["Up"], ["LEFT"] = L["Left"], ["RIGHT"] = L["Right"], ["DOWN"] = L["Down"]},
-								hidden = false,
-								arg = "chi.growth",
-							},
-							size = {
-								order = 2,
-								type = "range",
-								name = L["Size"],
-								min = 0, max = 50, step = 1, softMin = 0, softMax = 20,
-								hidden = hideAdvancedOption,
-								arg = "chi.size",
-							},
-							spacing = {
-								order = 3,
-								type = "range",
-								name = L["Spacing"],
-								min = -30, max = 30, step = 1, softMin = -15, softMax = 15,
-								hidden = hideAdvancedOption,
-								arg = "chi.spacing",
-							},
-							sep2 = {
-								order = 4,
-								type = "description",
-								name = "",
-								width = "full",
-								hidden = hideAdvancedOption,
-							},
-							anchorPoint = {
-								order = 5,
-								type = "select",
-								name = L["Anchor point"],
-								values = positionList,
-								hidden = false,
-								arg = "chi.anchorPoint",
-							},
-							x = {
-								order = 6,
-								type = "range",
-								name = L["X Offset"],
-								min = -30, max = 30, step = 1,
-								hidden = false,
-								arg = "chi.x",
-							},
-							y = {
-								order = 7,
-								type = "range",
-								name = L["Y Offset"],
-								min = -30, max = 30, step = 1,
-								hidden = false,
-								arg = "chi.y",
-							},
-						},
-					},
 					-- COMBO POINTS
 					barComboPoints = {
 						order = 4,
@@ -4168,28 +3487,12 @@ local function loadUnitOptions()
 						hidden = function(info)
 							local unit = info[2]
 							if( unit == "global" ) then
-								return not globalConfig.runeBar and not globalConfig.totemBar and not globalConfig.druidBar and not globalConfig.priestBar and not globalConfig.shamanBar and not globalConfig.xpBar and not globalConfig.staggerBar
+								return not globalConfig.totemBar and not globalConfig.druidBar and not globalConfig.xpBar and not globalConfig.powerPrediction
 							else
 								return unit ~= "player" and unit ~= "pet"
 							end
 						end,
 						args = {
-							runeBar = {
-								order = 1,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Rune bar"]),
-								desc = L["Adds rune bars and timers before runes refresh to the player frame."],
-								hidden = hideRestrictedOption,
-								arg = "runeBar.enabled",
-							},
-							staggerBar = {
-								order = 1.25,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Stagger bar"]),
-								desc = L["Adds a Stagger bar for Brewmaster Monks."],
-								hidden = hideRestrictedOption,
-								arg = "staggerBar.enabled",
-							},
 							druidBar = {
 								order = 3,
 								type = "toggle",
@@ -4198,21 +3501,23 @@ local function loadUnitOptions()
 								hidden = hideRestrictedOption,
 								arg = "druidBar.enabled",
 							},
-							priestBar = {
-								order = 3,
+							powerPrediction = {
+								order = 3.5,
 								type = "toggle",
-								name = string.format(L["Enable %s"], L["Priest mana bar"]),
-								desc = L["Adds a mana bar to the player frame for shadow priests."],
-								hidden = hideRestrictedOption,
-								arg = "priestBar.enabled",
+								name = string.format(L["Enable %s"], L["Power cost prediction"]),
+								desc = L["Shows the part of your power bar the spell you're casting will use."],
+								hidden = function(info) return info[2] ~= "player" and info[2] ~= "global" end,
+								arg = "powerPrediction.enabled",
 							},
-							shamanBar = {
-								order = 3,
-								type = "toggle",
-								name = string.format(L["Enable %s"], L["Shaman mana bar"]),
-								desc = L["Adds a mana bar to the player frame for elemental and enhancement shamans."],
-								hidden = hideRestrictedOption,
-								arg = "shamanBar.enabled",
+							powerPredictionShade = {
+								order = 3.6,
+								type = "range",
+								name = L["Power cost brightness"],
+								desc = L["How bright the cost is drawn compared to the power bar: lower is darker."],
+								min = 0.1, max = 1, step = 0.05, isPercent = true,
+								hidden = function(info) return info[2] ~= "player" and info[2] ~= "global" end,
+								disabled = function(info) return not getVariable(info[2], "powerPrediction", nil, "enabled") end,
+								arg = "powerPrediction.shade",
 							},
 							xpBar = {
 								order = 4,
@@ -4312,7 +3617,7 @@ local function loadUnitOptions()
 								desc = L["Percentage value of how far outside the unit frame the absorbed health bar can go. 130% means it will go 30% outside the frame, 100% means it will not go outside."],
 								min = 1, max = 1.50, step = 0.05, isPercent = true,
 								arg = "healAbsorb.cap",
-								hidden = false,
+								hidden = true, -- heal absorbs are drawn inside the health now, so this does nothing
 							},
 						},
 					},
@@ -4396,9 +3701,7 @@ local function loadUnitOptions()
 								order = 1,
 								type = "toggle",
 								name = string.format(L["Enable %s"], ShadowUF.modules.totemBar.moduleName),
-								desc = function(info)
-									return select(2, UnitClass("player")) == "SHAMAN" and L["Adds totem bars with timers before they expire to the player frame."] or select(2, UnitClass("player")) == "DEATHKNIGHT" and L["Adds a bar indicating how much time is left on your ghoul timer, only used if you do not have a permanent ghoul."] or select(2, UnitClass("player")) == "MAGE" and L["Adds a bar indicating how much time is left on your Rune of Power."] or L["Adds a bar indicating how much time is left on your mushrooms."]
-								end,
+								desc = L["Adds totem bars with timers before they expire to the player frame."],
 								arg = "totemBar.enabled",
 							},
 							icon = {
