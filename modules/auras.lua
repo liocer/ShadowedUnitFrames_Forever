@@ -235,7 +235,7 @@ local function updateButton(id, group, config)
 		button.cooldown:Hide()
 
 		button.stack = button:CreateFontString(nil, "OVERLAY")
-		button.stack:SetFont("Interface\\AddOns\\ShadowedUnitFrames\\media\\fonts\\Myriad Condensed Web.ttf", 10, "OUTLINE")
+		button.stack:SetFont("Interface\\AddOns\\ShadowedUnitFrames_Forever\\media\\fonts\\Myriad Condensed Web.ttf", 10, "OUTLINE")
 		button.stack:SetShadowColor(0, 0, 0, 1.0)
 		button.stack:SetShadowOffset(0.50, -0.50)
 		button.stack:SetHeight(1)
@@ -259,7 +259,7 @@ local function updateButton(id, group, config)
 		button.border:SetTexCoord(0.296875, 0.5703125, 0, 0.515625)
 		button.border:Show()
 	else
-		button.border:SetTexture("Interface\\AddOns\\ShadowedUnitFrames\\media\\textures\\border-" .. ShadowUF.db.profile.auras.borderType)
+		button.border:SetTexture("Interface\\AddOns\\ShadowedUnitFrames_Forever\\media\\textures\\border-" .. ShadowUF.db.profile.auras.borderType)
 		button.border:SetTexCoord(0, 1, 0, 1)
 		button.border:Show()
 	end
@@ -271,7 +271,7 @@ local function updateButton(id, group, config)
 	button:SetWidth(config.size)
 	button.border:SetHeight(config.size + 1)
 	button.border:SetWidth(config.size + 1)
-	button.stack:SetFont("Interface\\AddOns\\ShadowedUnitFrames\\media\\fonts\\Myriad Condensed Web.ttf", math.floor((config.size * 0.60) + 0.5), "OUTLINE")
+	button.stack:SetFont("Interface\\AddOns\\ShadowedUnitFrames_Forever\\media\\fonts\\Myriad Condensed Web.ttf", math.floor((config.size * 0.60) + 0.5), "OUTLINE")
 
 	button:SetScript("OnClick", cancelAura)
 	button.parent = group.parent

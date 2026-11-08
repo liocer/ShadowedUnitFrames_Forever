@@ -9,7 +9,7 @@ local trackSpell = AuraPoints.spells[select(2, UnitClass("player"))]
 if( not trackSpell or not trackSpell.name ) then return end
 
 ShadowUF:RegisterModule(AuraPoints, "auraPoints", ShadowUF.L["Aura Combo Points"])
-local auraConfig = {max = trackSpell.max, key = "auraPoints", colorKey = "AURAPOINTS", icon = "Interface\\AddOns\\ShadowedUnitFrames\\media\\textures\\combo"}
+local auraConfig = {max = trackSpell.max, key = "auraPoints", colorKey = "AURAPOINTS", icon = "Interface\\AddOns\\ShadowedUnitFrames_Forever\\media\\textures\\combo"}
 
 function AuraPoints:OnEnable(frame)
 	frame.auraPoints = frame.auraPoints or CreateFrame("Frame", nil, frame)

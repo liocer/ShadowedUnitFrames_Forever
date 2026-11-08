@@ -933,9 +933,9 @@ SlashCmdList["SHADOWEDUF"] = function(msg)
 		return
 	end
 
-	local loaded, reason = C_AddOns.LoadAddOn("ShadowedUF_Options")
+	local loaded, reason = C_AddOns.LoadAddOn("ShadowedUF_Forever_Options")
 	if( not ShadowUF.Config ) then
-		DEFAULT_CHAT_FRAME:AddMessage(string.format(L["Failed to load ShadowedUF_Options, cannot open configuration. Error returned: %s"], reason and _G["ADDON_" .. reason] or ""))
+		DEFAULT_CHAT_FRAME:AddMessage(string.format(L["Failed to load ShadowedUF_Forever_Options, cannot open configuration. Error returned: %s"], reason and _G["ADDON_" .. reason] or ""))
 		return
 	end
 

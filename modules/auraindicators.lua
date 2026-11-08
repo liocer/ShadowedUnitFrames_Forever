@@ -26,7 +26,7 @@ Indicators.auraConfig = setmetatable({}, {
 end})
 
 local playerUnits = {player = true, vehicle = true, pet = true}
-local backdropTbl = {bgFile = "Interface\\Addons\\ShadowedUnitFrames\\mediabackdrop", edgeFile = "Interface\\Addons\\ShadowedUnitFrames\\media\\backdrop", tile = true, tileSize = 1, edgeSize = 1}
+local backdropTbl = {bgFile = "Interface\\Addons\\ShadowedUnitFrames_Forever\\mediabackdrop", edgeFile = "Interface\\Addons\\ShadowedUnitFrames_Forever\\media\\backdrop", tile = true, tileSize = 1, edgeSize = 1}
 
 function Indicators:OnEnable(frame)
 	-- Not going to create the indicators we want here, will do that when we do the layout stuff
@@ -68,7 +68,7 @@ function Indicators:OnLayoutApplied(frame)
 			indicator.cooldown:SetHideCountdownNumbers(true)
 
 			indicator.stack = indicator:CreateFontString(nil, "OVERLAY")
-			indicator.stack:SetFont("Interface\\AddOns\\ShadowedUnitFrames\\media\\fonts\\Myriad Condensed Web.ttf", 12, "OUTLINE")
+			indicator.stack:SetFont("Interface\\AddOns\\ShadowedUnitFrames_Forever\\media\\fonts\\Myriad Condensed Web.ttf", 12, "OUTLINE")
 			indicator.stack:SetShadowColor(0, 0, 0, 1.0)
 			indicator.stack:SetShadowOffset(0.8, -0.8)
 			indicator.stack:SetPoint("BOTTOMRIGHT", indicator, "BOTTOMRIGHT", 1, 0)
