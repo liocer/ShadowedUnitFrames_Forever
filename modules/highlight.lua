@@ -192,8 +192,8 @@ local debuffColor = {r = 0, g = 0, b = 0}
 local function fallbackScan(frame)
 	local id = 0
 	while( true ) do
-		id = id + 1
-		local auraData = C_UnitAuras.GetDebuffDataByIndex(frame.unit, id)
+		local auraData
+		auraData, id = ShadowUF.Secrets.NextAura(frame.unit, id, "HARMFUL")
 		if( issecretvalue(auraData) or not auraData ) then break end
 		local auraType = auraData.dispelName
 		if( not issecretvalue(auraType) and auraType and ShadowUF.Units:CanCure(auraType) ) then
@@ -210,7 +210,7 @@ function Highlight:UpdateAura(frame)
 			local ok, ids = pcall(C_UnitAuras.GetUnitAuraInstanceIDs, frame.unit, "HARMFUL|RAID", 1)
 			local auraInstanceID = ok and type(ids) == "table" and ids[1]
 			if( auraInstanceID and not issecretvalue(auraInstanceID) ) then
-				auraData = C_UnitAuras.GetAuraDataByAuraInstanceID(frame.unit, auraInstanceID)
+				auraData = ShadowUF.Secrets.AuraByInstance(frame.unit, auraInstanceID)
 			elseif( not ok ) then
 				auraData = fallbackScan(frame)
 			end

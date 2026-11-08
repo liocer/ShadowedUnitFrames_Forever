@@ -170,3 +170,59 @@ function Secrets.Bool(value)
 	if( issecretvalue(value) ) then return nil end
 	return value and true or false
 end
+
+--[[
+	Auras. On Forever the game doesn't hand addons secret aura data: reading an aura that is
+	secret raises "Auras cannot be accessed when secret while tainted". So every read asks
+	C_Secrets first and skips what it can't have (also wrapped in pcall in case it's wrong).
+]]
+local ShouldIndexBeSecret = C_Secrets and C_Secrets.ShouldUnitAuraIndexBeSecret
+local ShouldInstanceBeSecret = C_Secrets and C_Secrets.ShouldUnitAuraInstanceBeSecret
+local GetAuraDataByIndex = C_UnitAuras.GetAuraDataByIndex
+local GetAuraDataByAuraInstanceID = C_UnitAuras.GetAuraDataByAuraInstanceID
+local MAX_AURA_INDEX = 100
+
+local function indexSecret(unit, index, filter)
+	if( not ShouldIndexBeSecret ) then return false end
+	local ok, secret = pcall(ShouldIndexBeSecret, unit, index, filter)
+	return not ok or issecretvalue(secret) or secret == true
+end
+
+-- The first readable aura at or after index+1: returns auraData, itsIndex (nil when there are no more).
+-- Use in loops as:  auraData, index = Secrets.NextAura(unit, index, filter)
+function Secrets.NextAura(unit, index, filter)
+	while( index < MAX_AURA_INDEX ) do
+		index = index + 1
+		if( not indexSecret(unit, index, filter) ) then
+			local ok, auraData = pcall(GetAuraDataByIndex, unit, index, filter)
+			if( not ok ) then
+				-- unreadable after all; keep going
+			elseif( not auraData ) then
+				return nil, index
+			elseif( not issecretvalue(auraData) ) then
+				return auraData, index
+			end
+		end
+	end
+	return nil, index
+end
+
+-- A single aura by index, nil when it's missing or secret
+function Secrets.AuraByIndex(unit, index, filter)
+	if( indexSecret(unit, index, filter) ) then return nil end
+	local ok, auraData = pcall(GetAuraDataByIndex, unit, index, filter)
+	if( not ok or issecretvalue(auraData) ) then return nil end
+	return auraData
+end
+
+-- An aura by its instance ID, nil when it's gone or secret
+function Secrets.AuraByInstance(unit, auraInstanceID)
+	if( not auraInstanceID or issecretvalue(auraInstanceID) ) then return nil end
+	if( ShouldInstanceBeSecret ) then
+		local ok, secret = pcall(ShouldInstanceBeSecret, unit, auraInstanceID)
+		if( not ok or issecretvalue(secret) or secret == true ) then return nil end
+	end
+	local ok, auraData = pcall(GetAuraDataByAuraInstanceID, unit, auraInstanceID)
+	if( not ok or issecretvalue(auraData) ) then return nil end
+	return auraData
+end

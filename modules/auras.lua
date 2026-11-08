@@ -380,16 +380,17 @@ end
 -- Aura button functions
 local function setAuraTooltip(self)
 	if( self.auraInstanceID and C_UnitAuras.GetAuraDataByAuraInstanceID ) then
+		-- Secret auras can't be read by addons at all; the tooltip may refuse them too
 		if( self.filter == "HARMFUL" and GameTooltip.SetUnitDebuffByAuraInstanceID ) then
-			GameTooltip:SetUnitDebuffByAuraInstanceID(self.unit, self.auraInstanceID, self.filter)
+			pcall(GameTooltip.SetUnitDebuffByAuraInstanceID, GameTooltip, self.unit, self.auraInstanceID, self.filter)
 			return
 		elseif( self.filter == "HELPFUL" and GameTooltip.SetUnitBuffByAuraInstanceID ) then
-			GameTooltip:SetUnitBuffByAuraInstanceID(self.unit, self.auraInstanceID, self.filter)
+			pcall(GameTooltip.SetUnitBuffByAuraInstanceID, GameTooltip, self.unit, self.auraInstanceID, self.filter)
 			return
 		end
 	end
 
-	GameTooltip:SetUnitAura(self.unit, self.auraID, self.filter)
+	pcall(GameTooltip.SetUnitAura, GameTooltip, self.unit, self.auraID, self.filter)
 end
 
 -- Updates the X seconds left on aura tooltip while it's shown
@@ -893,7 +894,7 @@ end
 -- Refreshes an aura that is already shown (stacks/timer changed) without rescanning the unit
 local function refreshButton(button)
 	if( not button.auraInstanceID or not button:IsShown() ) then return false end
-	local auraData = C_UnitAuras.GetAuraDataByAuraInstanceID(button.unit, button.auraInstanceID)
+	local auraData = ShadowUF.Secrets.AuraByInstance(button.unit, button.auraInstanceID)
 	if( not auraData ) then return false end
 
 	button.icon:SetTexture(auraData.icon)
@@ -926,8 +927,8 @@ local function scan(parent, frame, type, config, displayConfig, filter)
 	local known, seen = parent.known, parent.seen
 	local index = 0
 	while( true ) do
-		index = index + 1
-		local auraData = C_UnitAuras.GetAuraDataByIndex(unit, index, filter)
+		local auraData
+		auraData, index = ShadowUF.Secrets.NextAura(unit, index, filter)
 		if( issecretvalue(auraData) or not auraData ) then break end
 
 		local auraInstanceID = auraData.auraInstanceID

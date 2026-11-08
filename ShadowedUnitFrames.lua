@@ -126,9 +126,9 @@ function ShadowUF.UnitAuraBySpell(unit, spell, filter)
 	elseif( type(spell) == "number" ) then
 		local index = 0
 		while true do
-			index = index + 1
-			local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, unit, index, filter)
-			if( not ok or not data ) then break end
+			local data
+			data, index = ShadowUF.Secrets.NextAura(unit, index, filter)
+			if( not data ) then break end
 			local spellId = data.spellId
 			if( not issecretvalue(spellId) and spellId == spell ) then
 				auraData = data

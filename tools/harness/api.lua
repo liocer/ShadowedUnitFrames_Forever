@@ -4,6 +4,7 @@ local H = HARNESS
 local S = H.secret
 local apiRules = dofile((debug.getinfo(1, "S").source:match("^@(.*/)") or "./") .. "apirules.lua")
 H.secretMode = false
+H.lieAboutSecrets = os.getenv("LIE") == "1"
 H.inCombat = false
 
 local function maybe(v) if H.secretMode and v ~= nil then return S(v) end return v end
@@ -343,12 +344,11 @@ H.auras = {
 		{name = "Rake", icon = 132122, applications = 0, duration = 9, expirationTime = 1005, sourceUnit = "player", isHarmful = true, spellId = 9904, auraInstanceID = 10, isFromPlayerOrPlayerPet = true, isBossAura = false, isRaid = false, charges = 0, maxCharges = 0, timeMod = 1},
 	},
 }
+-- Like the real client: a tainted read of a secret aura raises an error
 local function secretAura(a)
 	if not a then return nil end
 	if not H.secretMode then return a end
-	local c = {}
-	for k, v in pairs(a) do c[k] = (k == "auraInstanceID") and v or S(v) end
-	return c
+	error("GetAuraDataByIndex(): Auras cannot be accessed when secret while tainted by 'ShadowedUnitFrames_Forever'", 3)
 end
 local function aurasFor(unit, filter)
 	local list = H.auras[unit] or H.auras[unit and unit:match("^party%d") and "player" or ""] or {}
@@ -416,8 +416,8 @@ AuraUtil = {
 C_Secrets = {
 	HasSecretRestrictions = function() return true end,
 	ShouldAurasBeSecret = function() return H.secretMode end,
-	ShouldUnitAuraIndexBeSecret = function() return H.secretMode end,
-	ShouldUnitAuraInstanceBeSecret = function() return H.secretMode end,
+	ShouldUnitAuraIndexBeSecret = function() return H.secretMode and not H.lieAboutSecrets end,
+	ShouldUnitAuraInstanceBeSecret = function() return H.secretMode and not H.lieAboutSecrets end,
 	ShouldSpellAuraBeSecret = function() return H.secretMode end,
 	ShouldUnitSpellCastingBeSecret = function() return H.secretMode end,
 	ShouldUnitIdentityBeSecret = function() return H.secretMode end,

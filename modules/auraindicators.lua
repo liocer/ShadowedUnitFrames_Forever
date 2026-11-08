@@ -344,8 +344,8 @@ local function scanAuras(frame, filter, type)
 
 	local index = 0
 	while( true ) do
-		index = index + 1
-		local auraData = C_UnitAuras.GetAuraDataByIndex(unit, index, filter)
+		local auraData
+		auraData, index = ShadowUF.Secrets.NextAura(unit, index, filter)
 		if( issecretvalue(auraData) or not auraData ) then return end
 
 		local auraInstanceID = auraData.auraInstanceID

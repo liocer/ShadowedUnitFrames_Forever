@@ -134,14 +134,15 @@ end
 -- First debuff on the unit the player can dispel
 local function findDispellable(unit)
 	-- The game's own "the player can dispel this" filter; works on secret auras too
-	local aura = C_UnitAuras.GetAuraDataByIndex(unit, 1, "HARMFUL|RAID")
+	local aura = ShadowUF.Secrets.NextAura(unit, 0, "HARMFUL|RAID")
 	if( aura and not issecretvalue(aura) ) then return aura end
 
 	-- SUF's own list of what the player can cure, for readable auras
 	if( next(ShadowUF.Units.canCure) ) then
-		for id = 1, 40 do
-			aura = C_UnitAuras.GetAuraDataByIndex(unit, id, "HARMFUL")
-			if( not aura or issecretvalue(aura) ) then break end
+		local id = 0
+		while( true ) do
+			aura, id = ShadowUF.Secrets.NextAura(unit, id, "HARMFUL")
+			if( not aura ) then break end
 
 			local dispelName = aura.dispelName
 			if( ShadowUF.Units:CanCure(dispelName) ) then
