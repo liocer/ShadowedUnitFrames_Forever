@@ -152,13 +152,13 @@ with nil checks. Blizzard's own code calls each of these functions on this build
 
 ## Changes needed elsewhere
 
-- **options/config.lua:**
+- **ShadowedUF_Forever_Options/config.lua:**
   - Add `["happiness"] = L["Pet Happiness"]` to `INDICATOR_NAMES` and
     `["happiness"] = L["Indicator for the current pet happiness."]` to `INDICATOR_DESC`.
     Otherwise the tree shows "happiness".
   - Remove `petBattle` and `arenaSpec` from both tables.
   - The options are built from `Indicators.list`, which already reflects these changes.
-- **options/config.lua, line ~235:** this line hides the cast bar options for fake units. The cast
+- **ShadowedUF_Forever_Options/config.lua, line ~235:** this line hides the cast bar options for fake units. The cast
   module supports them through polling, so options could stop hiding `castBar` there if cast bars
   are wanted on every unit. That is the options owner's call, because it costs a 0.1 s ticker per
   frame.

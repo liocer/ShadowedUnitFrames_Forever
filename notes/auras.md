@@ -124,7 +124,7 @@ Behaviour:
 ## Settings
 
 No new, removed or renamed saved settings. All existing aura, indicator and highlight options keep their db
-keys and meaning. Suggested option description tweaks for **options/config.lua**:
+keys and meaning. Suggested option description tweaks for **ShadowedUF_Forever_Options/config.lua**:
 - Aura filter group: "In combat the game hides aura names, so white/black lists only apply to auras that were
   already on the unit before combat; new auras use the filters below."
 - "Show casted by boss": "Boss auras that first appear in combat can't be recognised and count as 'other auras'."

@@ -1,4 +1,4 @@
-# Options (options/config.lua)
+# Options (ShadowedUF_Forever_Options/config.lua)
 
 Removed (the features don't exist on Forever):
 - Bar groups and settings for soul shards, arcane charges, holy power, shadow orbs and chi

@@ -37,8 +37,8 @@ setmetatable(_G, {__index = function(t, k)
 end})
 
 local addonDirs = {
-	ShadowedUnitFrames_Forever = REPO,
-	ShadowedUF_Forever_Options = REPO .. "/options",
+	ShadowedUnitFrames_Forever = REPO .. "/ShadowedUnitFrames_Forever",
+	ShadowedUF_Forever_Options = REPO .. "/ShadowedUF_Forever_Options",
 }
 
 local function readFile(p) local f = io.open(p, "rb") if not f then return nil end local s = f:read("*a") f:close() return s end

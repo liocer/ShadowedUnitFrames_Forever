@@ -126,14 +126,14 @@ Plain values give exactly the original output in every case.
 ## For the options agent
 
 Help and name text lives in `Tags.defaultHelp` and `Tags.defaultNames` in tags.lua, which
-options/config.lua reads, so most of it is already updated:
+ShadowedUF_Forever_Options/config.lua reads, so most of it is already updated:
 - New `|n...` sentences on the help for missinghp, missingpp, def:name, incheal, abs:incheal,
   per:incheal, incheal:name, incabsorb, abs:incabsorb, incabsorb:name, healabsorb, abs:healabsorb,
   abbrev:name, unit:raid:targeting, unit:raid:assist, and the six threat situation/colour tags.
 - New entry `pet:happiness`: name "Pet happiness", help "Your hunter pet's happiness: Happy, Content
   or Unhappy. Shows nothing if the game doesn't report it."
 - Options may still mention the removed tags, or categories that are now empty or Forever-irrelevant
-  (`classtimer` only has totem:timer now). Please check `options/config.lua` for references to
+  (`classtimer` only has totem:timer now). Please check `ShadowedUF_Forever_Options/config.lua` for references to
   rune/stagger/chi/holy power/soul shard tags.
 - Suggested text for the custom tag help: "Health, power, names and more can be secret in combat:
   check `issecretvalue(x)` before comparing or testing a value. Secrets can be concatenated,

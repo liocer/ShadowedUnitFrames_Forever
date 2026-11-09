@@ -122,7 +122,7 @@ All my files pass `luac -p` and luacheck with 0 warnings.
   - Player bars: `units.player.{runeBar, soulShards, holyPower, chi, staggerBar, arcaneCharges, essence, priestBar, shamanBar}`
   - Indicator: `units.arena.indicators.arenaSpec`
   - Class colours: `classColors.{DEATHKNIGHT, MONK, DEMONHUNTER, EVOKER}`
-  - Power colours: the list above. options/config.lua still has `powerColors.STAGGER_*`, `RUNIC_POWER`, `RUNES`,
+  - Power colours: the list above. ShadowedUF_Forever_Options/config.lua still has `powerColors.STAGGER_*`, `RUNIC_POWER`, `RUNES`,
     `INSANITY`, `MAELSTROM`, `HOLYPOWER`, `SOULSHARDS` and so on, which will now read nil.
 - The `hidden.*` keys are unchanged. Suggested option labels on Forever:
   - `playerPower`: "Hide Blizzard totem frame / class resource bars".

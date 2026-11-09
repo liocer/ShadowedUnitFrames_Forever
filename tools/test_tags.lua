@@ -286,8 +286,8 @@ local function loadInto(path)
 	setfenv(chunk, env)
 	chunk("ShadowedUnitFrames", ShadowUF)
 end
-loadInto("modules/secrets.lua")
-loadInto(os.getenv("TAGS_FILE") or "modules/tags.lua")
+loadInto("ShadowedUnitFrames_Forever/modules/secrets.lua")
+loadInto(os.getenv("TAGS_FILE") or "ShadowedUnitFrames_Forever/modules/tags.lua")
 local Tags = ShadowUF.Tags
 
 ---------------------------------------------------------------------------

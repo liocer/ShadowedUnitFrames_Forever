@@ -5,7 +5,7 @@
 -- exist without being listed. Check Blizzard's code before removing a call.
 std = "lua51"
 max_line_length = false
-exclude_files = { "libs/", "options/libs/", "locale-import.lua", ".luacheckrc", "tools/" }
+exclude_files = { "ShadowedUnitFrames_Forever/libs/", "ShadowedUF_Forever_Options/libs/", ".release/", "locale-import.lua", ".luacheckrc", "tools/" }
 ignore = { "11./BINDING_.*", "11./SLASH_.*", "211", "212", "213", "231/_.*", "431", "432", "311", "512", "542", "122" }
 globals = { "ShadowUF", "ClickCastFrames", "CONFIGMODE_CALLBACKS", "SlashCmdList", "ShadowedUFDB" }
 read_globals = dofile("tools/forever_globals.lua")

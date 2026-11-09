@@ -9,14 +9,16 @@ has no licence file, so treat this as a personal port: ask the authors before pu
 
 ## Installing
 
-Two addon folders, both from this repository:
+The repository holds two addons, each in its own folder:
 
 | Folder in `Interface/AddOns` | Is |
 |---|---|
-| `ShadowedUnitFrames_Forever` | The repository itself |
-| `ShadowedUF_Forever_Options` | Its `options/` folder (loaded when you open the options) |
+| `ShadowedUnitFrames_Forever` | The addon |
+| `ShadowedUF_Forever_Options` | Its options (loaded when you open them) |
 
-On this machine they're symlinks into `/home/rob/code/ShadowedUnitFrames_Forever`.
+Copy (or symlink) both folders into `Interface/AddOns`, or unzip a release zip there: it has the
+two folders at the top. On this machine they're symlinks into
+`/home/rob/code/ShadowedUnitFrames_Forever/<folder>`.
 
 Don't enable the original Shadowed Unit Frames at the same time. If it's loaded, SUF Forever stays
 off and says so in chat.
@@ -73,12 +75,26 @@ Each `notes/*.md` file ends with a list of what that area wasn't sure about.
 
 ## Development
 
+Repository layout:
+
+```
+ShadowedUnitFrames_Forever/   the addon (TOC, code, libs, media, localization)
+ShadowedUF_Forever_Options/   the options addon
+tools/  notes/  PORTING.md    development only, not packaged
+.pkgmeta  .github/workflows/  packaging
+```
+
+Releases: push a tag (for example `git tag v1.0.1 && git push --tags`). GitHub Actions runs
+luacheck, then the BigWigs packager builds `ShadowedUnitFrames_Forever-<tag>.zip` with both
+addon folders and attaches it to a GitHub release. To build the zip locally without uploading,
+run `release.sh -d` from <https://github.com/BigWigsMods/packager>; it lands in `.release/`.
+
 - `PORTING.md`: client facts and the rules for secret values.
 - `notes/`: what changed in each area of the port.
 - `tools/forever_globals.lua`: every global the Forever client defines, used by `.luacheckrc`, so
   luacheck flags APIs that don't exist here.
 - `tools/secret_apis.txt`: which APIs can return secrets, from the client's API docs.
-- `tools/harness/`: a mock Forever client. `cd tools/harness && lua5.1 run.lua <repo>` loads the
+- `tools/harness/`: a mock Forever client. `cd tools/harness && lua5.1 run.lua <repo root>` loads the
   addon, plays updates out of combat and in combat with fake secret values, opens the options,
   and lists every error. `CLASS=ROGUE` etc. picks the player's class.
 - `tools/check_tags.lua`, `tools/test_tags.lua`: lint and test every default tag.

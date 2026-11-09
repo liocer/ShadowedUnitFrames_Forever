@@ -17,7 +17,7 @@ shaman, arcanecharges, essence.
    self.defaults.profile.units[unit].powerPrediction = {enabled = (unit == "player"), shade = 0.6}
    ```
    Doing it for the player only is enough: `self.defaults.profile.units.player.powerPrediction = {enabled = true, shade = 0.6}`.
-2. **options/config.lua: add a "Power cost prediction" group** (next to incHeal/incAbsorb), see
+2. **ShadowedUF_Forever_Options/config.lua: add a "Power cost prediction" group** (next to incHeal/incAbsorb), see
    the settings table below. Also hide it for fake units (`hideRestrictedOption`), as incHeal
    is. The removed class bars' options (soulShards, arcaneCharges, runes, holy power, chi,
    stagger, essence, priest/shaman bars) are still in config.lua and need removing (options agent).

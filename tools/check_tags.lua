@@ -1,5 +1,5 @@
 --[[
-	Lints the default tags in modules/tags.lua. Tag code lives inside Lua strings, so
+	Lints the default tags in ShadowedUnitFrames_Forever/modules/tags.lua. Tag code lives inside Lua strings, so
 	luacheck can't see it when it checks tags.lua itself.
 
 	Run from the repo root:
@@ -35,8 +35,8 @@ local function loadInto(path)
 	chunk("ShadowedUnitFrames", env.ShadowUF)
 end
 
-loadInto("modules/secrets.lua")
-loadInto("modules/tags.lua")
+loadInto("ShadowedUnitFrames_Forever/modules/secrets.lua")
+loadInto("ShadowedUnitFrames_Forever/modules/tags.lua")
 
 local Tags = env.ShadowUF.Tags
 local names = {}
