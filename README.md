@@ -4,8 +4,7 @@ Shadowed Unit Frames, ported to WoW Forever.
 
 All credit for SUF goes to its authors: **Shadowed** (Mayen), who wrote it, and **Hendrik Leppkes
 (Nevcairiel)**, who has maintained it since. This is a fork of the upstream code at
-<https://github.com/Nevcairiel/ShadowedUnitFrames>, with its full history. The upstream repository
-has no licence file, so treat this as a personal port: ask the authors before publishing it.
+<https://github.com/Nevcairiel/ShadowedUnitFrames>, with its full history.
 
 ## Installing
 
