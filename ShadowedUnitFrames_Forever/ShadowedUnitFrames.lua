@@ -3,7 +3,7 @@
 	Maintained by Hendrik Leppkes (Nevcairiel).
 
 	Shadowed Unit Frames Forever: port to WoW Forever (Classic content on the modern engine,
-	with secret combat values). See PORTING.md and notes/ for what changed.
+	with secret combat values).
 ]]
 
 local addonName, namespace = ...

@@ -6,7 +6,7 @@
 	compared, tested with if/and/or/not, used in maths or as a table key. Every default tag
 	checks issecretvalue() before testing a value, and falls back to something sensible:
 	usually the same text built by the game (C_StringUtil.AbbreviateNumbers,
-	UnitHealthPercent with a curve, UnitHealthMissing, ...). See notes/tags.md.
+	UnitHealthPercent with a curve, UnitHealthMissing, ...).
 
 	Rules the machinery follows:
 	- a tag result is only tested after issecretvalue() says it's not secret;

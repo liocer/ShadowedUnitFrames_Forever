@@ -37,7 +37,7 @@ used in maths. SUF did a lot of maths, so most modules were reworked:
   use is drawn in a darker shade, like Blizzard's Forever player frame. On druids in a form it's
   shown on the mana bar. Options: *Power cost prediction*, on by default for the player.
 - **Text tags** all work in combat. Numbers and percentages come from the game. Tags that need
-  maths in combat fall back sensibly; see `notes/tags.md` for each one.
+  maths in combat fall back sensibly.
 - **Auras** use the game's own filters in combat ("yours", "curable", "castable"), so they keep
   working. White and black lists by name still apply to anything the game lets SUF read. Auras
   that were on before a fight are remembered by name.
@@ -62,8 +62,6 @@ What can't be done in combat (the game doesn't allow it):
 ShadowedUnitFrames_Forever/   the addon
 ShadowedUF_Forever_Options/   the options addon
 tools/                        luacheck globals, mock client, tag tests (not packaged)
-notes/                        what changed in each area of the port (not packaged)
-PORTING.md                    client facts and the rules for secret values
 ```
 
 **Checks**, run from the repository root:

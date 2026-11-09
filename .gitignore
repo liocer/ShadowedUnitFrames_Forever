@@ -1,3 +1,8 @@
 .DS_Store
 suf.tmproj
 .release/
+
+# Our own working notes (port notes, PORTING.md); kept locally, not published
+notes/
+# Claude Code worktrees and local settings
+.claude/
