@@ -17,8 +17,7 @@ The repository holds two addons, each in its own folder:
 | `ShadowedUF_Forever_Options` | Its options (loaded when you open them) |
 
 Copy (or symlink) both folders into `Interface/AddOns`, or unzip a release zip there: it has the
-two folders at the top. On this machine they're symlinks into
-`/home/rob/code/ShadowedUnitFrames_Forever/<folder>`.
+two folders at the top.
 
 Don't enable the original Shadowed Unit Frames at the same time. If it's loaded, SUF Forever stays
 off and says so in chat.
@@ -58,46 +57,29 @@ What can't be done in combat (the game doesn't allow it):
 - A boss debuff that first appears in combat can't be told apart from other debuffs.
 - Threat text, AFK, server and similar tags show nothing while secret.
 
-## Testing in game
-
-Nothing here has run in the real client yet. Things worth checking first, roughly in order:
-
-1. It loads without errors and `/suf` opens the options.
-2. In combat: health/power numbers and percentages (`[perhp]`, `[hp:color]`), the health
-   gradient, incoming heals on a party member, and the spend preview while casting.
-3. Auras in combat: timers, stacks, debuff border colours, your own buffs.
-4. Cast bars on you and your target in combat.
-5. Rogue/druid combo points on a target in combat, shaman totem timers.
-6. Range fading on party members.
-7. Blizzard's frames stay hidden (combo point ring, totem frame, druid mana bar).
-
-Each `notes/*.md` file ends with a list of what that area wasn't sure about.
-
 ## Development
 
-Repository layout:
-
 ```
-ShadowedUnitFrames_Forever/   the addon (TOC, code, libs, media, localization)
+ShadowedUnitFrames_Forever/   the addon
 ShadowedUF_Forever_Options/   the options addon
-tools/  notes/  PORTING.md    development only, not packaged
-.pkgmeta  .github/workflows/  packaging
+tools/                        luacheck globals, mock client, tag tests (not packaged)
+notes/                        what changed in each area of the port (not packaged)
+PORTING.md                    client facts and the rules for secret values
 ```
 
-Releases: push a tag (for example `git tag v1.0.1 && git push --tags`). GitHub Actions runs
-luacheck, then the BigWigs packager builds `ShadowedUnitFrames_Forever-<tag>.zip` with both
-addon folders and attaches it to a GitHub release. To build the zip locally without uploading,
-run `release.sh -d` from <https://github.com/BigWigsMods/packager>; it lands in `.release/`.
+**Checks**, run from the repository root:
 
-- `PORTING.md`: client facts and the rules for secret values.
-- `notes/`: what changed in each area of the port.
-- `tools/forever_globals.lua`: every global the Forever client defines, used by `.luacheckrc`, so
-  luacheck flags APIs that don't exist here.
-- `tools/secret_apis.txt`: which APIs can return secrets, from the client's API docs.
-- `tools/harness/`: a mock Forever client. `cd tools/harness && lua5.1 run.lua <repo root>` loads the
-  addon, plays updates out of combat and in combat with fake secret values, opens the options,
-  and lists every error. `CLASS=ROGUE` etc. picks the player's class.
-- `tools/check_tags.lua`, `tools/test_tags.lua`: lint and test every default tag.
+- `luacheck .` uses `tools/forever_globals.lua` (every global the Forever client defines), so it
+  flags APIs that don't exist on Forever.
+- `lua5.1 tools/harness/run.lua .` loads both addons in a mock Forever client, runs updates in
+  and out of combat with fake secret values, opens the options and lists every error.
+  `CLASS=ROGUE` etc. picks the player's class.
+- `lua5.1 tools/check_tags.lua` and `lua5.1 tools/test_tags.lua` lint and test every default tag.
 
-The API data comes from Blizzard's UI source for this exact build (Gethe/wow-ui-source, branch
-`forever`).
+`tools/secret_apis.txt` lists which APIs can return secrets. The API data comes from Blizzard's UI
+source for this build (Gethe/wow-ui-source, branch `forever`).
+
+**Releases:** push a single tag, e.g. `git tag v1.0.1 && git push origin v1.0.1`. GitHub Actions
+runs luacheck, then the BigWigs packager builds `ShadowedUnitFrames_Forever-<tag>.zip` with both
+addon folders and attaches it to a GitHub release. Push one tag at a time: GitHub doesn't run
+workflows when more than three tags are pushed together.
