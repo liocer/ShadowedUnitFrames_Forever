@@ -3487,7 +3487,7 @@ local function loadUnitOptions()
 						hidden = function(info)
 							local unit = info[2]
 							if( unit == "global" ) then
-								return not globalConfig.totemBar and not globalConfig.druidBar and not globalConfig.xpBar and not globalConfig.powerPrediction
+								return not globalConfig.totemBar and not globalConfig.druidBar and not globalConfig.xpBar and not globalConfig.powerPrediction and not globalConfig.poised
 							else
 								return unit ~= "player" and unit ~= "pet"
 							end
@@ -3518,6 +3518,14 @@ local function loadUnitOptions()
 								hidden = function(info) return info[2] ~= "player" and info[2] ~= "global" end,
 								disabled = function(info) return not getVariable(info[2], "powerPrediction", nil, "enabled") end,
 								arg = "powerPrediction.shade",
+							},
+							poised = {
+								order = 3.7,
+								type = "toggle",
+								name = string.format(L["Enable %s"], L["Poised glow"]),
+								desc = L["Rogues and druids: makes the end of your energy bar glow while Poised is ready (out of combat at full energy, your next ability costs 10 less)."],
+								hidden = function(info) return info[2] ~= "player" and info[2] ~= "global" end,
+								arg = "poised.enabled",
 							},
 							xpBar = {
 								order = 4,

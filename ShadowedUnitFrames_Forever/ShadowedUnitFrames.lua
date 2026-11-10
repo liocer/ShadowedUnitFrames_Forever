@@ -415,6 +415,7 @@ function ShadowUF:LoadUnitDefaults()
 	self.defaults.profile.units.player.totemBar = {enabled = false}
 	self.defaults.profile.units.player.druidBar = {enabled = false}
 	self.defaults.profile.units.player.powerPrediction = {enabled = true, shade = 0.6}
+	self.defaults.profile.units.player.poised = {enabled = true}
 	self.defaults.profile.units.player.xpBar = {enabled = false}
 	self.defaults.profile.units.player.fader = {enabled = false}
 	self.defaults.profile.units.player.comboPoints = {enabled = true, isBar = true}

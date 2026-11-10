@@ -36,6 +36,9 @@ used in maths. SUF did a lot of maths, so most modules were reworked:
 - **Power cost prediction (new):** while you cast, the part of your power bar the spell will
   use is drawn in a darker shade, like Blizzard's Forever player frame. On druids in a form it's
   shown on the mana bar. Options: *Power cost prediction*, on by default for the player.
+- **Poised glow (new):** rogues (18+) and druids in cat form (32+) get a glow on the end of the
+  energy bar while Poised is ready (out of combat at full energy, your next ability costs 10
+  less), like Blizzard's Forever player frame. Options: *Poised glow*, on by default.
 - **Text tags** all work in combat. Numbers and percentages come from the game. Tags that need
   maths in combat fall back sensibly.
 - **Auras** use the game's own filters in combat ("yours", "curable", "castable"), so they keep

@@ -192,6 +192,8 @@ local function chainFor(t)
 	local chain = {}
 	if own then table.insert(chain, own) end
 	if t == "PlayerModel" then table.insert(chain, "SimpleModelAPI") end
+	-- Alpha etc. are Animations too (SetDuration, SetSmoothing, ...)
+	if t == "Alpha" then table.insert(chain, "SimpleAnimAPI") end
 	for _, v in ipairs(ruleChain.Frame) do table.insert(chain, v) end
 	ruleChain[t] = chain
 	return chain

@@ -56,6 +56,7 @@ modules\incheal.lua
 modules\incabsorb.lua
 modules\healabsorb.lua
 modules\powerprediction.lua
+modules\poised.lua
 modules\range.lua
 modules\empty.lua
 modules\druid.lua
